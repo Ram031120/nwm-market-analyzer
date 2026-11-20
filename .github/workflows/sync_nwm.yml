@@ -1,0 +1,51 @@
+name: Daily NWM Data Sync
+
+on:
+  schedule:
+    # 14:15 UTC = 18:15 MUT (Mauritius UTC+4), after AMB publishes daily NWM bulletins
+    - cron: "15 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nwm-daily-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-nwm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "requirements.txt"
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run incremental NWM scraper
+        run: python3 scrape_nwm.py
+
+      - name: Commit and push updated dataset
+        run: |
+          git status --short data/
+          if [ -n "$(git status --porcelain data/nwm_history.db data/nwm_data.json data/nwm_all_vegetables.csv)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/nwm_history.db data/nwm_data.json data/nwm_all_vegetables.csv
+            STAMP=$(TZ="Indian/Mauritius" date +"%d/%m/%y")
+            git commit -m "chore(data): sync NWM bulletins (${STAMP})"
+            git push
+          else
+            echo "No new NWM bulletins published — nothing to commit."
+          fi

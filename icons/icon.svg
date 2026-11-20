@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="NWM Market Analyzer Icon">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b291f"/>
+      <stop offset="60%" stop-color="#113b2d"/>
+      <stop offset="100%" stop-color="#16513d"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6ee7b7"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <rect x="24" y="24" width="464" height="464" rx="90" fill="none" stroke="#6ee7b7" stroke-opacity="0.24" stroke-width="6"/>
+  <!-- Rising wholesale market bars -->
+  <rect x="108" y="294" width="60" height="106" rx="14" fill="url(#bar)" opacity="0.72"/>
+  <rect x="192" y="236" width="60" height="164" rx="14" fill="url(#bar)" opacity="0.88"/>
+  <rect x="276" y="180" width="60" height="220" rx="14" fill="url(#bar)"/>
+  <rect x="360" y="254" width="46" height="146" rx="14" fill="#f59e0b"/>
+  <!-- Botanical leaf accent -->
+  <path d="M126 196 C126 122, 198 92, 266 96 C262 162, 214 202, 146 202 C138 202, 132 200, 126 196 Z" fill="#34d399"/>
+  <path d="M116 210 C154 176, 196 146, 244 116" fill="none" stroke="#0b291f" stroke-width="10" stroke-linecap="round"/>
+  <!-- Baseline -->
+  <line x1="92" y1="414" x2="420" y2="414" stroke="#ecfdf5" stroke-opacity="0.45" stroke-width="8" stroke-linecap="round"/>
+</svg>

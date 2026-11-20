@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Mauritius National Wholesale Market (AMB) daily vegetable &amp; fruit wholesale price and volume analyzer.">
+  <meta name="theme-color" content="#0b291f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="NWM Prices">
+  <title>NWM Market Analyzer — Mauritius Wholesale Prices</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
+            <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Mauritius National Wholesale Market</h1>
+          <p class="subtitle">AMB Daily Sales Transactions &amp; Wholesale Price Intelligence</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="dataset-meta" id="dataset-meta" aria-live="polite">
+          <span class="meta-pill" id="meta-last-updated">Last bulletin: --/--/--</span>
+          <span class="meta-pill meta-pill--muted" id="meta-coverage">Loading dataset...</span>
+        </div>
+
+        <fieldset class="unit-toggle" aria-label="Global price unit">
+          <legend class="sr-only">Price display unit</legend>
+          <input type="radio" name="price-unit" id="unit-lb" value="lb" checked>
+          <label for="unit-lb">Rs/lb</label>
+          <input type="radio" name="price-unit" id="unit-kg" value="kg">
+          <label for="unit-kg">Rs/kg</label>
+        </fieldset>
+
+        <button type="button" class="btn-sync" id="btn-sync">
+          <svg class="sync-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5"/>
+          </svg>
+          <span id="btn-sync-label">Sync Latest NWM Data</span>
+        </button>
+
+        <button type="button" class="btn-install" id="btn-install-app" hidden>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Install App</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="sync-toast" id="sync-toast" role="status" aria-live="polite" hidden></div>
+  </header>
+
+  <main class="dashboard">
+    <!-- Control Deck -->
+    <section class="control-deck" aria-label="Market filters">
+      <!-- Row 1: Commodity Selector & Quick Pins -->
+      <div class="control-block control-block--item">
+        <div class="control-label-row">
+          <label for="item-search-input" class="control-label">Commodity</label>
+          <span class="item-unit-badge" id="selected-item-unit-badge">Unit: --</span>
+        </div>
+
+        <div class="combobox" id="primary-combobox">
+          <div class="combobox-input-wrap">
+            <svg class="combobox-search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+            </svg>
+            <input
+              type="text"
+              id="item-search-input"
+              class="combobox-input"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded="false"
+              aria-controls="item-listbox"
+              placeholder="Search any NWM vegetable or fruit..."
+              autocomplete="off"
+            >
+            <button type="button" class="combobox-toggle" id="item-dropdown-toggle" aria-label="Toggle commodity list" tabindex="-1">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </button>
+          </div>
+          <ul id="item-listbox" class="combobox-listbox" role="listbox" hidden></ul>
+        </div>
+
+        <div class="quick-pins" role="group" aria-label="Quick-pin vegetables">
+          <span class="quick-pins-label">Quick pins:</span>
+          <button type="button" class="pin-btn" data-pin="Pomme d'Amour (Serre)">Pomme d'Amour (Serre)</button>
+          <button type="button" class="pin-btn" data-pin="Pomme d'Amour (Terre)">Pomme d'Amour (Terre)</button>
+          <button type="button" class="pin-btn" data-pin="Poivron (Rouge)">Poivron (Rouge)</button>
+          <button type="button" class="pin-btn" data-pin="Poivron (Vert)">Poivron (Vert)</button>
+        </div>
+      </div>
+
+      <!-- Row 2: Flexible Date Range Selector -->
+      <div class="control-block control-block--dates">
+        <div class="control-label-row">
+          <span class="control-label">Date Range <span class="format-hint">(dd/mm/yy)</span></span>
+          <span class="range-summary" id="date-range-summary">--/--/-- → --/--/--</span>
+        </div>
+
+        <div class="date-inputs-row">
+          <div class="date-field">
+            <label for="from-date-display">From</label>
+            <div class="date-input-group">
+              <input
+                type="text"
+                id="from-date-display"
+                class="date-text-input"
+                placeholder="dd/mm/yy"
+                inputmode="numeric"
+                maxlength="8"
+                aria-label="From date in dd/mm/yy format"
+              >
+              <input type="date" id="from-date-native" class="date-native-hidden" tabindex="-1" aria-hidden="true">
+              <button type="button" class="date-picker-btn" id="from-date-picker-btn" title="Choose From Date" aria-label="Open calendar for From Date">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <span class="date-arrow" aria-hidden="true">→</span>
+
+          <div class="date-field">
+            <label for="to-date-display">To</label>
+            <div class="date-input-group">
+              <input
+                type="text"
+                id="to-date-display"
+                class="date-text-input"
+                placeholder="dd/mm/yy"
+                inputmode="numeric"
+                maxlength="8"
+                aria-label="To date in dd/mm/yy format"
+              >
+              <input type="date" id="to-date-native" class="date-native-hidden" tabindex="-1" aria-hidden="true">
+              <button type="button" class="date-picker-btn" id="to-date-picker-btn" title="Choose To Date" aria-label="Open calendar for To Date">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="date-presets" role="group" aria-label="Date range presets">
+          <button type="button" class="preset-btn" data-preset="14d">Last 14 Days</button>
+          <button type="button" class="preset-btn is-active" data-preset="30d">Last 30 Days</button>
+          <button type="button" class="preset-btn" data-preset="90d">Last 90 Days</button>
+          <button type="button" class="preset-btn" data-preset="ytd">This Year</button>
+          <button type="button" class="preset-btn" data-preset="all">All Available Data</button>
+        </div>
+        <p class="date-error" id="date-error" role="alert" hidden></p>
+      </div>
+    </section>
+
+    <!-- Supply Drop Alert Banner (shown dynamically when >30% drop vs 7-day avg) -->
+    <div class="supply-alert-banner" id="supply-alert-banner" role="alert" hidden>
+      <div class="supply-alert-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+          <path d="M12 9v4M12 17h.01"/>
+        </svg>
+      </div>
+      <div class="supply-alert-copy" id="supply-alert-text"></div>
+    </div>
+
+    <!-- KPI Cards -->
+    <section class="kpi-grid" aria-label="Key performance indicators">
+      <article class="kpi-card">
+        <div class="kpi-head">
+          <span class="kpi-label">Latest NORM Price</span>
+          <span class="kpi-date-chip" id="kpi-latest-price-date">--/--/--</span>
+        </div>
+        <div class="kpi-value" id="kpi-latest-price">--</div>
+        <div class="kpi-foot" id="kpi-latest-price-delta">No prior trading day in range</div>
+      </article>
+
+      <article class="kpi-card" id="kpi-volume-card">
+        <div class="kpi-head">
+          <span class="kpi-label">Latest Volume Sold</span>
+          <span class="kpi-badge" id="kpi-supply-badge">Supply Status</span>
+        </div>
+        <div class="kpi-value" id="kpi-latest-volume">--</div>
+        <div class="kpi-foot" id="kpi-latest-volume-meta">--</div>
+      </article>
+
+      <article class="kpi-card">
+        <div class="kpi-head">
+          <span class="kpi-label">Range Average NORM</span>
+          <span class="kpi-date-chip" id="kpi-range-days">0 days</span>
+        </div>
+        <div class="kpi-value" id="kpi-avg-price">--</div>
+        <div class="kpi-foot" id="kpi-price-spread">Low – High spread: --</div>
+      </article>
+
+      <article class="kpi-card">
+        <div class="kpi-head">
+          <span class="kpi-label">Range Volume Sold</span>
+          <span class="kpi-date-chip" id="kpi-volume-unit">--</span>
+        </div>
+        <div class="kpi-value" id="kpi-total-volume">--</div>
+        <div class="kpi-foot" id="kpi-avg-volume">Daily average: --</div>
+      </article>
+    </section>
+
+    <!-- Daily / Monthly Price & Volume Bar Charts -->
+    <section class="card chart-section" aria-labelledby="daily-charts-heading">
+      <div class="section-header section-header--wrap">
+        <div>
+          <h2 id="daily-charts-heading">Wholesale Price &amp; Volume</h2>
+          <p class="section-subtitle" id="daily-charts-subtitle">
+            Most Common Price (NORM) and Quantity Sold — view daily trading days or regroup by month.
+          </p>
+        </div>
+        <div class="chart-header-right">
+          <fieldset class="mini-segmented" aria-label="Primary chart grouping">
+            <legend class="sr-only">Group primary charts by</legend>
+            <input type="radio" name="primary-grouping" id="primary-group-day" value="day" checked>
+            <label for="primary-group-day">Daily</label>
+            <input type="radio" name="primary-grouping" id="primary-group-month" value="month">
+            <label for="primary-group-month">Regroup by Month</label>
+          </fieldset>
+          <div class="chart-legend-pills" id="daily-legend-pills">
+            <span class="legend-dot legend-dot--price"></span><span>NORM Price</span>
+            <span class="legend-dot legend-dot--vol"></span><span>Volume Sold</span>
+            <span class="legend-dot legend-dot--drop" id="legend-drop-dot"></span><span id="legend-drop-label">&gt;30% Supply Drop</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="daily-charts-stack">
+        <div class="chart-panel">
+          <div class="chart-panel-title" id="price-chart-title">Most Common Price (NORM)</div>
+          <div class="chart-canvas-wrap chart-canvas-wrap--price">
+            <canvas id="daily-price-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-panel">
+          <div class="chart-panel-title" id="volume-chart-title">Daily Volume Sold</div>
+          <div class="chart-canvas-wrap chart-canvas-wrap--volume">
+            <canvas id="daily-volume-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty-state" id="daily-empty-state" hidden>
+        No recorded transactions for this commodity in the selected date range. Try widening the date range or choosing another item.
+      </div>
+    </section>
+
+    <!-- Pomme d'Amour Stacked Bar Charts (Terre + Serre — shown only when Pomme d'Amour is selected) -->
+    <section class="card tomato-stacked-section" id="tomato-stacked-section" aria-labelledby="tomato-stacked-heading" hidden>
+      <div class="section-header section-header--wrap">
+        <div>
+          <h2 id="tomato-stacked-heading">Pomme d'Amour Breakdown — Terre &amp; Serre (Stacked)</h2>
+          <p class="section-subtitle" id="tomato-stacked-subtitle">
+            Combined Pomme d'Amour (Terre) and Pomme d'Amour (Serre) volume supply and NORM price breakdown over the selected date range.
+          </p>
+        </div>
+
+        <div class="tomato-controls">
+          <fieldset class="mini-segmented" aria-label="Pomme d'Amour grouping">
+            <legend class="sr-only">Group Pomme d'Amour stacked charts by</legend>
+            <input type="radio" name="tomato-grouping" id="tomato-group-day" value="day" checked>
+            <label for="tomato-group-day">Daily</label>
+            <input type="radio" name="tomato-grouping" id="tomato-group-month" value="month">
+            <label for="tomato-group-month">Regroup by Month</label>
+          </fieldset>
+
+          <fieldset class="mini-segmented" aria-label="Pomme d'Amour volume stack mode">
+            <legend class="sr-only">Pomme d'Amour volume chart scale</legend>
+            <input type="radio" name="tomato-vol-mode" id="tomato-vol-kg" value="kg" checked>
+            <label for="tomato-vol-kg">Volume (Kg)</label>
+            <input type="radio" name="tomato-vol-mode" id="tomato-vol-pct" value="pct">
+            <label for="tomato-vol-pct">Share (%)</label>
+          </fieldset>
+        </div>
+      </div>
+
+      <div class="tomato-summary-grid" id="tomato-summary-grid"></div>
+
+      <div class="tomato-charts-stack" id="tomato-charts-stack">
+        <div class="chart-panel">
+          <div class="chart-panel-title" id="tomato-vol-chart-title">Pomme d'Amour Volume Sold — Stacked (Terre + Serre, Kg)</div>
+          <div class="chart-canvas-wrap chart-canvas-wrap--price">
+            <canvas id="tomato-stacked-volume-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-panel">
+          <div class="chart-panel-title" id="tomato-price-chart-title">Pomme d'Amour NORM Price — Terre vs Serre</div>
+          <div class="chart-canvas-wrap chart-canvas-wrap--volume">
+            <canvas id="tomato-stacked-price-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty-state" id="tomato-empty-state" hidden>
+        No Pomme d'Amour (Terre) or Pomme d'Amour (Serre) records found in the selected date range.
+      </div>
+    </section>
+
+    <!-- Date-to-Date & Month-to-Month Comparison -->
+    <section class="card date-compare-section" aria-labelledby="date-compare-heading">
+      <div class="section-header section-header--wrap">
+        <div>
+          <div class="d2d-title-row">
+            <h2 id="date-compare-heading">Date &amp; Month Comparison</h2>
+            <fieldset class="mini-segmented" aria-label="Comparison granularity">
+              <legend class="sr-only">Compare by specific dates or by full months</legend>
+              <input type="radio" name="d2d-mode" id="d2d-mode-date" value="date" checked>
+              <label for="d2d-mode-date">Date vs Date</label>
+              <input type="radio" name="d2d-mode" id="d2d-mode-month" value="month">
+              <label for="d2d-mode-month">Month vs Month</label>
+            </fieldset>
+          </div>
+          <p class="section-subtitle" id="date-compare-subtitle">
+            Compare any two specific dates (e.g. 16/11/25 vs 16/11/26) or any two months (e.g. Nov 25 vs Nov 26) across all NWM items.
+          </p>
+        </div>
+
+        <div class="date-compare-controls">
+          <!-- Date-vs-Date Pickers -->
+          <div class="date-compare-pickers" id="d2d-date-pickers">
+            <div class="date-field date-field--compact">
+              <label for="d2d-date-a-display" class="compare-tag compare-tag--a">Date A</label>
+              <div class="date-input-group">
+                <input
+                  type="text"
+                  id="d2d-date-a-display"
+                  class="date-text-input"
+                  placeholder="dd/mm/yy"
+                  inputmode="numeric"
+                  maxlength="8"
+                  aria-label="Comparison Date A in dd/mm/yy format"
+                >
+                <input type="date" id="d2d-date-a-native" class="date-native-hidden" tabindex="-1" aria-hidden="true">
+                <button type="button" class="date-picker-btn" id="d2d-date-a-picker-btn" title="Choose Date A" aria-label="Open calendar for Date A">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <button type="button" class="btn-swap" id="btn-swap-d2d" title="Swap Date A and Date B" aria-label="Swap Date A and Date B">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
+              </svg>
+            </button>
+
+            <div class="date-field date-field--compact">
+              <label for="d2d-date-b-display" class="compare-tag compare-tag--b">Date B</label>
+              <div class="date-input-group">
+                <input
+                  type="text"
+                  id="d2d-date-b-display"
+                  class="date-text-input"
+                  placeholder="dd/mm/yy"
+                  inputmode="numeric"
+                  maxlength="8"
+                  aria-label="Comparison Date B in dd/mm/yy format"
+                >
+                <input type="date" id="d2d-date-b-native" class="date-native-hidden" tabindex="-1" aria-hidden="true">
+                <button type="button" class="date-picker-btn" id="d2d-date-b-picker-btn" title="Choose Date B" aria-label="Open calendar for Date B">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Month-vs-Month Pickers -->
+          <div class="date-compare-pickers" id="d2d-month-pickers" hidden>
+            <div class="date-field date-field--month">
+              <label for="d2d-month-a-select" class="compare-tag compare-tag--a">Month A</label>
+              <select id="d2d-month-a-select" class="d2d-month-select" aria-label="Comparison Month A"></select>
+            </div>
+
+            <button type="button" class="btn-swap" id="btn-swap-m2m" title="Swap Month A and Month B" aria-label="Swap Month A and Month B">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
+              </svg>
+            </button>
+
+            <div class="date-field date-field--month">
+              <label for="d2d-month-b-select" class="compare-tag compare-tag--b">Month B</label>
+              <select id="d2d-month-b-select" class="d2d-month-select" aria-label="Comparison Month B"></select>
+            </div>
+          </div>
+
+          <div class="d2d-quick-actions" role="group" aria-label="Quick comparison presets">
+            <button type="button" class="preset-btn" id="btn-d2d-yoy1">Same Day Last Year</button>
+            <button type="button" class="preset-btn" id="btn-d2d-yoy2">Same Day 2 Yrs Ago</button>
+            <button type="button" class="preset-btn" id="btn-d2d-prev">Prev Trading Day</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="date-error" id="d2d-error" role="alert" hidden></p>
+
+      <!-- Shown strictly when Date A or Date B was a closed market day (zero extrapolation) -->
+      <div class="d2d-closed-notice" id="d2d-closed-notice" role="status" aria-live="polite" hidden></div>
+
+      <!-- Selected Item Spotlight -->
+      <div class="d2d-spotlight-grid" id="d2d-spotlight-grid"></div>
+
+      <!-- Selected Item Price & Volume Snapshot Charts -->
+      <div class="d2d-charts-grid">
+        <div class="chart-panel">
+          <div class="chart-panel-title" id="d2d-price-chart-title">Low / NORM / High Price Comparison</div>
+          <div class="chart-canvas-wrap chart-canvas-wrap--d2d">
+            <canvas id="d2d-price-chart"></canvas>
+          </div>
+        </div>
+        <div class="chart-panel">
+          <div class="chart-panel-title" id="d2d-volume-chart-title">Volume Sold Comparison</div>
+          <div class="chart-canvas-wrap chart-canvas-wrap--d2d">
+            <canvas id="d2d-volume-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- All-Market Comparison Table -->
+      <div class="d2d-table-toolbar">
+        <div class="d2d-table-title"><span id="d2d-table-heading-text">All Market Items on Both Dates</span> <span class="d2d-count-pill" id="d2d-table-count">0 items</span></div>
+        <div class="d2d-table-filters">
+          <input type="search" id="d2d-table-search" class="d2d-search-input" placeholder="Filter commodities..." aria-label="Filter commodities in comparison table">
+          <select id="d2d-table-sort" class="d2d-sort-select" aria-label="Sort comparison table">
+            <option value="alpha">Sort: A – Z</option>
+            <option value="price-up">Largest Price Increase (%)</option>
+            <option value="price-down">Largest Price Drop (%)</option>
+            <option value="vol-drop">Largest Volume Drop (%)</option>
+            <option value="vol-high" id="d2d-sort-vol-opt">Highest Period B Volume</option>
+          </select>
+          <label class="scope-checkbox">
+            <input type="checkbox" id="d2d-both-only">
+            <span id="d2d-both-only-label">Traded on both dates only</span>
+          </label>
+        </div>
+      </div>
+
+      <div tabindex="0" role="region" aria-labelledby="d2d-table-caption" class="table-wrapper">
+        <table class="data-table data-table--d2d" id="d2d-table">
+          <caption id="d2d-table-caption" class="sr-only">Market-wide comparison of NWM wholesale prices and volumes between Date A and Date B</caption>
+          <thead>
+            <tr>
+              <th scope="col">Item</th>
+              <th scope="col" class="num" id="d2d-col-pa">Date A NORM</th>
+              <th scope="col" class="num" id="d2d-col-pb">Date B NORM</th>
+              <th scope="col" class="num">Price Δ</th>
+              <th scope="col" class="num" id="d2d-col-qa">Date A Qty</th>
+              <th scope="col" class="num" id="d2d-col-qb">Date B Qty</th>
+              <th scope="col" class="num">Qty Δ</th>
+            </tr>
+          </thead>
+          <tbody id="d2d-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Monthly Comparison View -->
+    <section class="card monthly-section" aria-labelledby="monthly-heading">
+      <div class="section-header section-header--wrap">
+        <div>
+          <h2 id="monthly-heading">Monthly Comparison Across Years</h2>
+          <p class="section-subtitle" id="monthly-subtitle">
+            Compare monthly average NORM price and volume across selected years.
+          </p>
+        </div>
+
+        <div class="monthly-controls">
+          <div class="year-toggles" id="year-checkboxes" role="group" aria-label="Select years for monthly comparison">
+            <!-- Dynamically populated from data.years -->
+          </div>
+
+          <div class="monthly-mode-group">
+            <fieldset class="mini-segmented" aria-label="Monthly chart metric">
+              <legend class="sr-only">Monthly chart metric</legend>
+              <input type="radio" name="monthly-metric" id="monthly-metric-price" value="price" checked>
+              <label for="monthly-metric-price">Avg NORM</label>
+              <input type="radio" name="monthly-metric" id="monthly-metric-qty" value="qty">
+              <label for="monthly-metric-qty">Total Qty</label>
+            </fieldset>
+
+            <label class="scope-checkbox" title="Compare the same calendar months of your selected range across all checked years">
+              <input type="checkbox" id="monthly-match-months" checked>
+              <span>Match range months across checked years</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-canvas-wrap chart-canvas-wrap--monthly">
+        <canvas id="monthly-comparison-chart"></canvas>
+      </div>
+
+      <div tabindex="0" role="region" aria-labelledby="monthly-table-caption" class="table-wrapper">
+        <table class="data-table" id="monthly-table">
+          <caption id="monthly-table-caption" class="sr-only">Monthly NWM wholesale summary by year and month</caption>
+          <thead>
+            <tr>
+              <th scope="col">Year</th>
+              <th scope="col">Month</th>
+              <th scope="col" class="num">Total Qty</th>
+              <th scope="col" class="num">Avg Low</th>
+              <th scope="col" class="num">Avg High</th>
+              <th scope="col" class="num">Avg NORM</th>
+              <th scope="col" class="num">Trading Days</th>
+            </tr>
+          </thead>
+          <tbody id="monthly-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Side-by-Side Comparison -->
+    <section class="card compare-section" aria-labelledby="compare-heading">
+      <div class="section-header section-header--wrap">
+        <div>
+          <h2 id="compare-heading">Side-by-Side Commodity Comparison</h2>
+          <p class="section-subtitle" id="compare-subtitle">
+            Compare NORM prices and volumes for any two NWM items over the active date range.
+          </p>
+        </div>
+
+        <div class="compare-selectors">
+          <fieldset class="mini-segmented" aria-label="Side-by-side chart grouping">
+            <legend class="sr-only">Group comparison charts by</legend>
+            <input type="radio" name="compare-grouping" id="compare-group-day" value="day" checked>
+            <label for="compare-group-day">Daily</label>
+            <input type="radio" name="compare-grouping" id="compare-group-month" value="month">
+            <label for="compare-group-month">By Month</label>
+          </fieldset>
+
+          <div class="compare-picker">
+            <label for="compare-a-input" class="compare-tag compare-tag--a">Item A</label>
+            <div class="combobox combobox--compact" id="compare-a-combobox">
+              <div class="combobox-input-wrap">
+                <input
+                  type="text"
+                  id="compare-a-input"
+                  class="combobox-input"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded="false"
+                  aria-controls="compare-a-listbox"
+                  autocomplete="off"
+                >
+                <button type="button" class="combobox-toggle" aria-label="Toggle Item A list" tabindex="-1">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </button>
+              </div>
+              <ul id="compare-a-listbox" class="combobox-listbox" role="listbox" hidden></ul>
+            </div>
+          </div>
+
+          <button type="button" class="btn-swap" id="btn-swap-compare" title="Swap Item A and Item B" aria-label="Swap Item A and Item B">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
+            </svg>
+          </button>
+
+          <div class="compare-picker">
+            <label for="compare-b-input" class="compare-tag compare-tag--b">Item B</label>
+            <div class="combobox combobox--compact" id="compare-b-combobox">
+              <div class="combobox-input-wrap">
+                <input
+                  type="text"
+                  id="compare-b-input"
+                  class="combobox-input"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded="false"
+                  aria-controls="compare-b-listbox"
+                  autocomplete="off"
+                >
+                <button type="button" class="combobox-toggle" aria-label="Toggle Item B list" tabindex="-1">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </button>
+              </div>
+              <ul id="compare-b-listbox" class="combobox-listbox" role="listbox" hidden></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="compare-summary-grid" id="compare-summary-grid">
+        <!-- Populated dynamically -->
+      </div>
+
+      <div class="compare-charts-grid">
+        <div class="chart-panel">
+          <div class="chart-panel-title" id="compare-price-title">NORM Price Comparison</div>
+          <div class="chart-canvas-wrap chart-canvas-wrap--compare">
+            <canvas id="compare-price-chart"></canvas>
+          </div>
+        </div>
+        <div class="chart-panel">
+          <div class="chart-panel-title" id="compare-volume-title">Daily Volume Comparison</div>
+          <div class="chart-canvas-wrap chart-canvas-wrap--compare">
+            <canvas id="compare-volume-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span>Source: Agricultural Marketing Board (AMB) Mauritius — National Wholesale Market Daily Sales Bulletins.</span>
+      <div class="footer-links">
+        <a href="data/nwm_all_vegetables.csv" download>Download Full CSV</a>
+        <span aria-hidden="true">·</span>
+        <a href="data/nwm_data.json" target="_blank" rel="noopener">Raw JSON</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>

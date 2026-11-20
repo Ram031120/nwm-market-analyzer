@@ -1,0 +1,20 @@
+# Cached raw AMB PDF bulletins (excluded to keep the Git repository lightweight)
+nwm_pdfs_cache/
+
+# Keep SQLite database, JSON, and CSV exports tracked in Git:
+# !data/nwm_history.db
+# !data/nwm_data.json
+# !data/nwm_all_vegetables.csv
+data/*.db-wal
+data/*.db-shm
+data/*.tmp
+
+# Python & OS artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+*.log
