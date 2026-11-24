@@ -4,6 +4,7 @@ Mauritius National Wholesale Market (NWM) Incremental PDF Scraper & Database Bui
 
 Fetches Daily Sales Transaction PDF bulletins from AMB Mauritius
 (https://ambmauritius.mu/nwm-publication/), caches PDFs locally in nwm_pdfs_cache/,
+falls back to https://kozpri.com when AMB has not yet published the latest day's PDF,
 stores parsed records in SQLite (data/nwm_history.db) with incremental tracking
 via `processed_dates`, and exports data/nwm_data.json and data/nwm_all_vegetables.csv.
 """
@@ -41,6 +42,7 @@ CSV_PATH = DATA_DIR / "nwm_all_vegetables.csv"
 PDF_CACHE_DIR = BASE_DIR / "nwm_pdfs_cache"
 
 AMB_URL = "https://ambmauritius.mu/nwm-publication/"
+KOZPRI_URL = "https://kozpri.com"
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -399,6 +401,122 @@ def fetch_nwm_pdf_links(session: requests.Session) -> dict[str, list[str]]:
     return date_to_urls
 
 
+def parse_kozpri_html(html: str) -> tuple[str, dict[str, dict[str, Any]]] | None:
+    """
+    Parse the latest day's NWM price table from https://kozpri.com HTML.
+    Returns (date_iso, records_dict) or None if no valid date/table is found.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    page_text = soup.get_text(" ", strip=True)
+
+    # Kozpri displays dates like "Tuesday 24 November 2026" or "24 November 2026"
+    date_match = re.search(
+        r"\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(20\d{2})\b",
+        page_text,
+        flags=re.IGNORECASE,
+    )
+    if not date_match:
+        return None
+
+    day_s, month_s, year_s = date_match.groups()
+    try:
+        parsed_date = dt.datetime.strptime(f"{day_s} {month_s} {year_s}", "%d %B %Y").date()
+    except ValueError:
+        return None
+
+    date_iso = parsed_date.isoformat()
+    date_display = format_date_ddmmyy(parsed_date)
+    records: dict[str, dict[str, Any]] = {}
+
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        if not rows:
+            continue
+
+        # Identify column indices from header row if present, else default [ITEM, UNIT, LO, HI, NORM, TTL]
+        header_cells = [c.get_text(" ", strip=True).lower() for c in rows[0].find_all(["th", "td"])]
+        has_header = any(h in {"item", "lo", "hi", "norm", "ttl"} for h in header_cells)
+        start_idx = 1 if has_header else 0
+
+        col_map = {"item": 0, "unit": 1, "lo": 2, "hi": 3, "norm": 4, "ttl": 5}
+        if has_header:
+            for idx, h in enumerate(header_cells):
+                if "item" in h:
+                    col_map["item"] = idx
+                elif "unit" in h:
+                    col_map["unit"] = idx
+                elif h in {"lo", "low", "low price"}:
+                    col_map["lo"] = idx
+                elif h in {"hi", "high", "high price"}:
+                    col_map["hi"] = idx
+                elif "norm" in h or "common" in h:
+                    col_map["norm"] = idx
+                elif h in {"ttl", "total", "qty", "qty sold"}:
+                    col_map["ttl"] = idx
+
+        for tr in rows[start_idx:]:
+            cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
+            if len(cells) < 5:
+                continue
+
+            item_raw = cells[col_map["item"]] if col_map["item"] < len(cells) else None
+            unit_raw = cells[col_map["unit"]] if col_map["unit"] < len(cells) else None
+            low_val = parse_number(cells[col_map["lo"]]) if col_map["lo"] < len(cells) else None
+            high_val = parse_number(cells[col_map["hi"]]) if col_map["hi"] < len(cells) else None
+            norm_val = parse_number(cells[col_map["norm"]]) if col_map["norm"] < len(cells) else None
+            qty_val = parse_number(cells[col_map["ttl"]]) if col_map["ttl"] < len(cells) else None
+
+            item = normalize_item_name(item_raw)
+            if not item:
+                continue
+
+            # Kozpri lists unrecorded items as 0/0/0/0 — skip them to match AMB PDF behavior
+            has_nonzero_price = any(v is not None and v > 0 for v in (low_val, high_val, norm_val))
+            has_nonzero_qty = qty_val is not None and qty_val > 0
+            if not has_nonzero_price and not has_nonzero_qty:
+                continue
+
+            unit = normalize_unit(unit_raw)
+            rec = {
+                "date_iso": date_iso,
+                "date": date_display,
+                "item": item,
+                "unit": unit,
+                "qty_sold": qty_val,
+                "low_price": low_val,
+                "high_price": high_val,
+                "norm_price": norm_val,
+            }
+            existing = records.get(item)
+            if existing is None or (
+                (existing["norm_price"] is None or existing["norm_price"] == 0)
+                and (rec["norm_price"] is not None and rec["norm_price"] > 0)
+            ):
+                records[item] = rec
+
+    if not records:
+        return None
+    return date_iso, records
+
+
+def fetch_kozpri_fallback(session: requests.Session) -> tuple[str, dict[str, dict[str, Any]]] | None:
+    """
+    Fetch https://kozpri.com as a fallback when AMB has not yet uploaded today's PDF.
+    """
+    try:
+        resp = session.get(KOZPRI_URL, verify=False, timeout=45)
+        resp.raise_for_status()
+        parsed = parse_kozpri_html(resp.text)
+        if parsed:
+            date_iso, recs = parsed
+            logger.info("Kozpri fallback found %d records for %s.", len(recs), date_iso)
+            return date_iso, recs
+        logger.warning("Kozpri fallback: page loaded, but no HTML price table was found.")
+    except Exception as exc:
+        logger.warning("Kozpri fallback failed: %s", exc)
+    return None
+
+
 def get_cache_path(date_iso: str, url: str) -> Path:
     fname = unquote(urlparse(url).path.rsplit("/", 1)[-1])
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", fname).strip("_")
@@ -603,8 +721,6 @@ def parse_pdf_file(pdf_path: Path, date_iso: str) -> dict[str, dict[str, Any]]:
                     has_qty = qty_val is not None and qty_val > 0
                     if not has_price and not has_qty:
                         continue
-                    # If qty is 0 with no prices, skip; if qty is 0 with prices, keep qty as None/0?
-                    # Actually keep literal value if recorded (qty_val as parsed).
 
                     unit = normalize_unit(unit_raw)
                     rec = {
@@ -754,6 +870,47 @@ def export_json_and_csv(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _save_date_records(
+    conn: sqlite3.Connection,
+    date_iso: str,
+    urls: list[str],
+    recs: dict[str, dict[str, Any]],
+    now_iso: str,
+) -> None:
+    date_disp = format_date_ddmmyy(dt.date.fromisoformat(date_iso))
+    with conn:
+        # Clear any prior fallback rows for this date before inserting official AMB rows
+        conn.execute("DELETE FROM nwm_records WHERE date_iso = ?", (date_iso,))
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO nwm_records
+                (date_iso, date, item, unit, qty_sold, low_price, high_price, norm_price)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    r["date_iso"],
+                    r["date"],
+                    r["item"],
+                    r["unit"],
+                    r["qty_sold"],
+                    r["low_price"],
+                    r["high_price"],
+                    r["norm_price"],
+                )
+                for r in recs.values()
+            ],
+        )
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO processed_dates
+                (date_iso, date_display, source_urls, record_count, processed_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (date_iso, date_disp, json.dumps(urls), len(recs), now_iso),
+        )
+
+
 def sync_nwm_data(
     rebuild: bool = False,
     use_cache: bool = True,
@@ -777,31 +934,38 @@ def sync_nwm_data(
             conn.execute("DELETE FROM processed_dates")
             conn.commit()
 
-        existing_dates = {
-            row[0] for row in conn.execute("SELECT date_iso FROM processed_dates").fetchall()
+        # Track existing dates and whether they came from Kozpri fallback (upgradeable when AMB PDF arrives)
+        existing_sources: dict[str, str] = {
+            row[0]: row[1]
+            for row in conn.execute("SELECT date_iso, source_urls FROM processed_dates").fetchall()
+        }
+        official_amb_dates = {
+            d_iso
+            for d_iso, src in existing_sources.items()
+            if "ambmauritius.mu" in src or ".pdf" in src.lower()
         }
 
         session = requests.Session()
         session.headers.update({"User-Agent": USER_AGENT})
         all_date_urls = fetch_nwm_pdf_links(session)
 
-        # Only fetch dates not already in processed_dates (newest first)
-        pending_dates = sorted((d for d in all_date_urls if d not in existing_dates), reverse=True)
+        # Fetch dates not yet backed by an official AMB PDF (newest first)
+        pending_dates = sorted((d for d in all_date_urls if d not in official_amb_dates), reverse=True)
         if limit is not None and limit > 0:
             pending_dates = pending_dates[:limit]
 
         logger.info(
-            "Already in SQLite: %d dates | New dates to fetch: %d",
-            len(existing_dates),
+            "Already in SQLite (AMB): %d dates | New/upgradeable AMB dates: %d",
+            len(official_amb_dates),
             len(pending_dates),
         )
 
         new_dates_added = 0
         new_records_added = 0
         failed_dates: list[dict[str, str]] = []
+        now_iso = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
         if pending_dates:
-            now_iso = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
             completed = 0
             total_pending = len(pending_dates)
 
@@ -824,36 +988,7 @@ def sync_nwm_data(
                     completed += 1
                     try:
                         date_iso, urls, recs = fut.result()
-                        date_disp = format_date_ddmmyy(dt.date.fromisoformat(date_iso))
-                        with conn:
-                            conn.executemany(
-                                """
-                                INSERT OR REPLACE INTO nwm_records
-                                    (date_iso, date, item, unit, qty_sold, low_price, high_price, norm_price)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                """,
-                                [
-                                    (
-                                        r["date_iso"],
-                                        r["date"],
-                                        r["item"],
-                                        r["unit"],
-                                        r["qty_sold"],
-                                        r["low_price"],
-                                        r["high_price"],
-                                        r["norm_price"],
-                                    )
-                                    for r in recs.values()
-                                ],
-                            )
-                            conn.execute(
-                                """
-                                INSERT OR REPLACE INTO processed_dates
-                                    (date_iso, date_display, source_urls, record_count, processed_at)
-                                VALUES (?, ?, ?, ?, ?)
-                                """,
-                                (date_iso, date_disp, json.dumps(urls), len(recs), now_iso),
-                            )
+                        _save_date_records(conn, date_iso, urls, recs, now_iso)
                         new_dates_added += 1
                         new_records_added += len(recs)
                         if completed % 25 == 0 or completed == total_pending:
@@ -866,6 +1001,16 @@ def sync_nwm_data(
                     except Exception as exc:
                         logger.error("Failed date %s: %s", d_iso, exc)
                         failed_dates.append({"date_iso": d_iso, "error": str(exc)})
+
+        # Kozpri fallback: if Kozpri has a date not yet in AMB (nor already in SQLite), import it
+        kozpri_res = fetch_kozpri_fallback(session)
+        if kozpri_res is not None:
+            k_date_iso, k_recs = kozpri_res
+            if k_date_iso not in all_date_urls and k_date_iso not in existing_sources:
+                _save_date_records(conn, k_date_iso, [KOZPRI_URL], k_recs, now_iso)
+                new_dates_added += 1
+                new_records_added += len(k_recs)
+                logger.info("Added Kozpri fallback data for %s (%d records).", k_date_iso, len(k_recs))
 
         # Regenerate JSON & CSV if new dates were added, rebuild ran, or files don't exist
         needs_export = (
@@ -907,7 +1052,7 @@ def sync_nwm_data(
             "status": "ok",
             "rebuild": rebuild,
             "discovered_dates": len(all_date_urls),
-            "skipped_dates": len(existing_dates) if not rebuild else 0,
+            "skipped_dates": len(official_amb_dates) if not rebuild else 0,
             "new_dates_added": new_dates_added,
             "new_records_added": new_records_added,
             "failed_dates": failed_dates,
