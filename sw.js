@@ -1,17 +1,17 @@
-// Lightweight Service Worker for NWM Market Analyzer PWA
-const SHELL_CACHE = "nwm-shell-v3";
+// Lightweight Service Worker for NWM Market Analyzer PWA (compatible with Netlify & GitHub Pages)
+const SHELL_CACHE = "nwm-shell-v4";
 const DATA_CACHE = "nwm-data-v1";
 
 const SHELL_ASSETS = [
-  "/",
-  "/index.html",
-  "/styles.css",
-  "/app.js",
-  "/manifest.json",
-  "/icons/icon.svg",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/apple-touch-icon.png",
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./app.js",
+  "./manifest.json",
+  "./icons/icon.svg",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -46,11 +46,11 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Never cache local backend API endpoints
-  if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname.includes("/api/")) return;
 
   // Network-first for all data/ requests (JSON & CSV) so fresh daily updates always win,
   // while falling back to the last cached copy when offline.
-  if (url.pathname.startsWith("/data/")) {
+  if (url.pathname.includes("/data/")) {
     const cacheKey = url.pathname;
     event.respondWith(
       fetch(request)
@@ -67,7 +67,12 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Network-first with cache fallback for app shell & navigation requests
-  if (request.mode === "navigate" || SHELL_ASSETS.includes(url.pathname)) {
+  const isShellAsset = SHELL_ASSETS.some((asset) => {
+    const suffix = asset.replace(/^\./, "");
+    return url.pathname.endsWith(suffix);
+  });
+
+  if (request.mode === "navigate" || isShellAsset) {
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -78,7 +83,7 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() =>
-          caches.match(request).then((cached) => cached || caches.match("/index.html"))
+          caches.match(request).then((cached) => cached || caches.match("./index.html"))
         )
     );
     return;
