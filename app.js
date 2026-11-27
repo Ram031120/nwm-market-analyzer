@@ -3735,7 +3735,7 @@ function renderMarketMovers() {
 // ---------------------------------------------------------------------------
 
 function updateQuickPinActiveStates() {
-  document.querySelectorAll(".pin-btn").forEach((btn) => {
+  document.querySelectorAll(".quick-pins .pin-btn").forEach((btn) => {
     const resolved = resolveBestItemMatch(btn.dataset.pin, state.rawData?.items || []);
     btn.disabled = !resolved;
     btn.classList.toggle("is-active", Boolean(resolved) && resolved === state.selectedItem);
@@ -4095,8 +4095,8 @@ function bindControls() {
     },
   });
 
-  // Quick-pin buttons
-  document.querySelectorAll(".pin-btn").forEach((btn) => {
+  // Quick-pin buttons (scoped to Dashboard quick-pins container)
+  document.querySelectorAll(".quick-pins .pin-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const resolved = resolveBestItemMatch(btn.dataset.pin, state.rawData?.items || []);
       if (resolved) selectPrimaryItem(resolved);
@@ -4111,8 +4111,8 @@ function bindControls() {
     });
   });
 
-  // Date presets
-  document.querySelectorAll(".preset-btn").forEach((btn) => {
+  // Date presets (scoped to Dashboard date-presets container)
+  document.querySelectorAll(".date-presets .preset-btn").forEach((btn) => {
     btn.addEventListener("click", () => applyPreset(btn.dataset.preset));
   });
 
