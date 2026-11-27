@@ -3339,6 +3339,12 @@ async function loadDataset(preserveSelection = false) {
           false,
           10000
         );
+      } else if (lastSeenIso && currentMaxIso <= lastSeenIso) {
+        showToast(
+          `No new data available · Latest bulletin: ${data.last_updated || maxDisp}.`,
+          false,
+          6000
+        );
       }
       localStorage.setItem(LAST_SEEN_DATE_KEY, currentMaxIso);
     } catch {
@@ -3461,11 +3467,17 @@ async function triggerIncrementalSync() {
   try {
     if (!isLocal) {
       // Hosted static mode (Netlify / GitHub Pages): cleanly re-fetch daily-synced JSON
+      const prevMaxIso = state.rawData?.date_range?.max_iso || "";
       await loadDataset(true);
-      const latest = state.rawData?.last_updated || formatIsoDDMMYY(state.rawData?.date_range?.max_iso);
+      const newMaxIso = state.rawData?.date_range?.max_iso || "";
+      const latest = state.rawData?.last_updated || formatIsoDDMMYY(newMaxIso);
       const totalDays = state.rawData?.total_trading_days ?? 0;
       const totalItems = state.rawData?.items?.length ?? 0;
-      showToast(`Refreshed NWM data · Last updated: ${latest} (${totalDays} trading days, ${totalItems} items).`);
+      if (newMaxIso && prevMaxIso && newMaxIso > prevMaxIso) {
+        showToast(`New NWM data available: ${latest} (${totalDays} trading days, ${totalItems} items).`, false, 10000);
+      } else {
+        showToast(`No new data available · Latest bulletin: ${latest}.`, false, 6000);
+      }
       return;
     }
 
@@ -3497,7 +3509,7 @@ async function triggerIncrementalSync() {
       );
     } else {
       showToast(
-        `Already up to date through ${payload.last_updated} · Checked ${payload.discovered_dates} AMB bulletins, skipped ${payload.skipped_dates} saved (${payload.duration_seconds}s).`
+        `No new data available · Already up to date through ${payload.last_updated} (${payload.duration_seconds}s).`
       );
     }
   } catch (err) {
