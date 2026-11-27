@@ -1,5 +1,5 @@
 // Lightweight Service Worker for NWM Market Analyzer PWA
-const SHELL_CACHE = "nwm-shell-v2";
+const SHELL_CACHE = "nwm-shell-v3";
 const DATA_CACHE = "nwm-data-v1";
 
 const SHELL_ASSETS = [
