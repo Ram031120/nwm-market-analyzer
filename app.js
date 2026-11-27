@@ -4057,7 +4057,15 @@ async function triggerIncrementalSync() {
 
   try {
     if (!isLocal) {
-      // Hosted static mode (Netlify / GitHub Pages): cleanly re-fetch daily-synced JSON
+      // Hosted static mode (Netlify / GitHub Pages): force Service Worker update & re-fetch daily-synced JSON
+      if ("serviceWorker" in navigator) {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.update()));
+        } catch {
+          // Ignore SW update check errors
+        }
+      }
       const prevMaxIso = state.rawData?.date_range?.max_iso || "";
       await loadDataset(true);
       const newMaxIso = state.rawData?.date_range?.max_iso || "";

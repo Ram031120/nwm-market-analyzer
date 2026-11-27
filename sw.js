@@ -1,12 +1,12 @@
 // Lightweight Service Worker for NWM Market Analyzer PWA (compatible with Netlify & GitHub Pages)
-const SHELL_CACHE = "nwm-shell-v11";
+const SHELL_CACHE = "nwm-shell-v12";
 const DATA_CACHE = "nwm-data-v1";
 
 const SHELL_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
+  "./styles.css?v=12",
+  "./app.js?v=12",
   "./manifest.json",
   "./manifest.json?v=2",
   "./icons/icon.svg?v=2",
@@ -75,7 +75,7 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate" || isShellAsset) {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: "no-cache" })
         .then((response) => {
           if (response && response.ok) {
             const copy = response.clone();
