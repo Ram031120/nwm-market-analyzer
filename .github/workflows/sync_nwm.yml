@@ -2,8 +2,10 @@ name: Daily NWM Data Sync
 
 on:
   schedule:
-    # 14:15 UTC = 18:15 MUT (Mauritius UTC+4), after AMB publishes daily NWM bulletins
-    - cron: "15 14 * * *"
+    # Every 30 min from 12:00 PM to 8:30 PM MUT (08:00–16:30 UTC), Mon–Sat
+    - cron: "*/30 8-16 * * 1-6"
+    # 6:30 AM MUT (02:30 UTC) daily catch-up for late publications
+    - cron: "30 2 * * *"
   workflow_dispatch:
 
 permissions:
