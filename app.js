@@ -517,7 +517,7 @@ function syncDateInputsUI() {
   errorEl.hidden = true;
   errorEl.textContent = "";
 
-  document.querySelectorAll(".preset-btn").forEach((btn) => {
+  document.querySelectorAll(".date-presets .preset-btn").forEach((btn) => {
     btn.classList.toggle("is-active", btn.dataset.preset === state.activePreset);
   });
 }
@@ -535,6 +535,8 @@ function applyPreset(presetKey) {
     fromIso = clampIso(subtractDaysIso(maxIso, 13), minIso, maxIso);
   } else if (presetKey === "30d") {
     fromIso = clampIso(subtractDaysIso(maxIso, 29), minIso, maxIso);
+  } else if (presetKey === "60d") {
+    fromIso = clampIso(subtractDaysIso(maxIso, 59), minIso, maxIso);
   } else if (presetKey === "90d") {
     fromIso = clampIso(subtractDaysIso(maxIso, 89), minIso, maxIso);
   } else if (presetKey === "ytd") {
@@ -3409,14 +3411,31 @@ function buildSparklineSvg(values, dirClass, uid) {
     </svg>`;
 }
 
+function downsampleSparkPoints(vals, maxPts = 60) {
+  if (!Array.isArray(vals) || vals.length <= maxPts) return vals;
+  const out = [];
+  const lastIdx = vals.length - 1;
+  for (let i = 0; i < maxPts; i++) {
+    const idx = Math.round((i / (maxPts - 1)) * lastIdx);
+    out.push(vals[idx]);
+  }
+  return out;
+}
+
 function computeMarketMovers() {
   if (!state.rawData) return [];
   const maxIso = state.rawData.date_range?.max_iso;
+  const minIso = state.rawData.date_range?.min_iso || "2024-01-01";
   if (!maxIso) return [];
 
   const tf = state.moversTimeframe;
-  const daysMap = { "14D": 13, "30D": 29, "90D": 89 };
-  const cutoffIso = tf !== "1D" ? subtractDaysIso(maxIso, daysMap[tf] || 13) : null;
+  const daysMap = { "14D": 13, "30D": 29, "60D": 59, "90D": 89 };
+  const cutoffIso =
+    tf === "1D"
+      ? null
+      : tf === "ALL"
+        ? minIso
+        : subtractDaysIso(maxIso, daysMap[tf] || 13);
 
   const items = state.rawData.items || [];
   const movers = [];
@@ -3472,6 +3491,7 @@ function computeMarketMovers() {
 
       const diff = latestPrice - avgPrice;
       const pct = (diff / avgPrice) * 100;
+      const tfLabel = tf === "ALL" ? "All-Time" : tf;
 
       movers.push({
         item: itemName,
@@ -3484,11 +3504,11 @@ function computeMarketMovers() {
         latestIso: latestRec.date_iso,
         latestQty: latestRec.qty_sold,
         baselinePrice: avgPrice,
-        baselineLabel: `${tf} Avg (${convertedVals.length}d): Rs ${formatPrice(avgPrice)}`,
+        baselineLabel: `${tfLabel} Avg (${convertedVals.length}d): Rs ${formatPrice(avgPrice)}`,
         diff,
         pct,
         direction: Math.abs(pct) < 0.05 ? "flat" : diff > 0 ? "up" : "down",
-        sparkPoints: convertedVals,
+        sparkPoints: downsampleSparkPoints(convertedVals, 60),
       });
     }
   }
@@ -3570,10 +3590,11 @@ function renderMarketMovers() {
       <span class="mover-pill mover-pill--${m.direction}">${escapeHtml(formatMoverBadgeText(m))}</span>
     </button>`;
 
+  const tfDisplay = state.moversTimeframe === "ALL" ? "All Data" : state.moversTimeframe;
   topStrip.innerHTML = `
     <div class="top-movers-group top-movers-group--gainers">
       <div class="top-movers-group-title">
-        <span>${catScopeTitle}Top 3 Gainers (▲ ${state.moversTimeframe})</span>
+        <span>${catScopeTitle}Top 3 Gainers (▲ ${tfDisplay})</span>
         <span>${gainers.length} up</span>
       </div>
       <div class="top-movers-cards">
@@ -3582,7 +3603,7 @@ function renderMarketMovers() {
     </div>
     <div class="top-movers-group top-movers-group--losers">
       <div class="top-movers-group-title">
-        <span>${catScopeTitle}Top 3 Losers (▼ ${state.moversTimeframe})</span>
+        <span>${catScopeTitle}Top 3 Losers (▼ ${tfDisplay})</span>
         <span>${losers.length} down</span>
       </div>
       <div class="top-movers-cards">
