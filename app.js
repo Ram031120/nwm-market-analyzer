@@ -3342,7 +3342,7 @@ async function loadDataset(preserveSelection = false) {
       } else if (lastSeenIso && currentMaxIso <= lastSeenIso) {
         showToast(
           `No new data available · Latest bulletin: ${data.last_updated || maxDisp}.`,
-          false,
+          true,
           6000
         );
       }
@@ -3476,7 +3476,7 @@ async function triggerIncrementalSync() {
       if (newMaxIso && prevMaxIso && newMaxIso > prevMaxIso) {
         showToast(`New NWM data available: ${latest} (${totalDays} trading days, ${totalItems} items).`, false, 10000);
       } else {
-        showToast(`No new data available · Latest bulletin: ${latest}.`, false, 6000);
+        showToast(`No new data available · Latest bulletin: ${latest}.`, true, 6000);
       }
       return;
     }
@@ -3509,7 +3509,9 @@ async function triggerIncrementalSync() {
       );
     } else {
       showToast(
-        `No new data available · Already up to date through ${payload.last_updated} (${payload.duration_seconds}s).`
+        `No new data available · Already up to date through ${payload.last_updated} (${payload.duration_seconds}s).`,
+        true,
+        6000
       );
     }
   } catch (err) {
