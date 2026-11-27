@@ -10,16 +10,16 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="NWM Prices">
   <title>NWM Market Analyzer — Mauritius Wholesale Prices</title>
-  <link rel="manifest" href="/manifest.json">
-  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="./styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="./app.js"></script>
 </head>
 <body>
   <header class="site-header">
@@ -644,9 +644,9 @@
     <div class="footer-inner">
       <span>Source: Agricultural Marketing Board (AMB) Mauritius — National Wholesale Market Daily Sales Bulletins.</span>
       <div class="footer-links">
-        <a href="data/nwm_all_vegetables.csv" download>Download Full CSV</a>
+        <a href="./data/nwm_all_vegetables.csv" download>Download Full CSV</a>
         <span aria-hidden="true">·</span>
-        <a href="data/nwm_data.json" target="_blank" rel="noopener">Raw JSON</a>
+        <a href="./data/nwm_data.json" target="_blank" rel="noopener">Raw JSON</a>
       </div>
     </div>
   </footer>
@@ -654,7 +654,7 @@
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(() => {});
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
       });
     }
   </script>
