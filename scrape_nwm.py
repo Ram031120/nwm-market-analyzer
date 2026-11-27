@@ -306,6 +306,10 @@ def normalize_item_name(raw: str | None) -> str | None:
     ):
         return None
 
+    # Permanently exclude unsplit legacy "Pomme d'Amour" (only keep Pomme d'Amour (Terre) & (Serre))
+    if s == "Pomme d'Amour":
+        return None
+
     return s
 
 
@@ -646,6 +650,8 @@ def export_json_and_csv(conn: sqlite3.Connection) -> dict[str, Any]:
     Regenerate data/nwm_data.json and data/nwm_all_vegetables.csv from SQLite.
     """
     cur = conn.cursor()
+    cur.execute("DELETE FROM nwm_records WHERE item = 'Pomme d''Amour'")
+    conn.commit()
     rows = cur.execute(
         """
         SELECT date_iso, date, item, unit, qty_sold, low_price, high_price, norm_price

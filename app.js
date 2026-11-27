@@ -239,7 +239,15 @@ function formatSignedPct(pct) {
 // Data Indexing & Supply Drop Analytics
 // ---------------------------------------------------------------------------
 
+const EXCLUDED_ITEMS = new Set(["pomme d'amour"]);
+
+function isExcludedItem(itemName) {
+  return EXCLUDED_ITEMS.has(normalizeSearchKey(itemName));
+}
+
 function indexDataset(data) {
+  data.items = (data.items || []).filter((item) => !isExcludedItem(item));
+  data.records = (data.records || []).filter((rec) => !isExcludedItem(rec.item));
   state.rawData = data;
   state.recordsByItem = new Map();
   state.recordsByDate = new Map();
@@ -1819,11 +1827,10 @@ function renderPommeDamourStacked() {
   const items = state.rawData.items || [];
   const terreName = resolveBestItemMatch("Pomme d'Amour (Terre)", items);
   const serreName = resolveBestItemMatch("Pomme d'Amour (Serre)", items);
-  const unsplitName = items.includes("Pomme d'Amour") ? "Pomme d'Amour" : "";
 
   const terreRecs = terreName ? getItemRecordsInRange(terreName) : [];
   const serreRecs = serreName ? getItemRecordsInRange(serreName) : [];
-  const unsplitRecs = unsplitName ? getItemRecordsInRange(unsplitName) : [];
+  const unsplitRecs = [];
 
   const summaryGrid = document.getElementById("tomato-summary-grid");
   const chartsStack = document.getElementById("tomato-charts-stack");
