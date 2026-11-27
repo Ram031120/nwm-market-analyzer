@@ -8,10 +8,11 @@ const SHELL_ASSETS = [
   "./styles.css",
   "./app.js",
   "./manifest.json",
-  "./icons/icon.svg",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/apple-touch-icon.png",
+  "./manifest.json?v=2",
+  "./icons/icon.svg?v=2",
+  "./icons/icon-192.png?v=2",
+  "./icons/icon-512.png?v=2",
+  "./icons/apple-touch-icon.png?v=2",
 ];
 
 self.addEventListener("install", (event) => {
@@ -68,8 +69,8 @@ self.addEventListener("fetch", (event) => {
 
   // Network-first with cache fallback for app shell & navigation requests
   const isShellAsset = SHELL_ASSETS.some((asset) => {
-    const suffix = asset.replace(/^\./, "");
-    return url.pathname.endsWith(suffix);
+    const suffix = asset.replace(/^\./, "").split("?")[0];
+    return suffix && url.pathname.endsWith(suffix);
   });
 
   if (request.mode === "navigate" || isShellAsset) {
