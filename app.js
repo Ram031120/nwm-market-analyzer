@@ -61,6 +61,7 @@ const state = {
   monthlyMetric: "price", // "price" | "qty"
   monthlyMatchMonths: true,
   activeAppTab: "dashboard", // "dashboard" | "movers"
+  moversCategory: "all", // "all" (separated) | "vegetable" | "fruit"
   moversTimeframe: "1D", // "1D" | "14D" | "30D" | "90D"
   moversFilter: "all", // "all" | "gainers" | "losers" | "unchanged"
   moversSearch: "",
@@ -3253,6 +3254,72 @@ function renderDateToDateComparison() {
 // Top-Level Tabs & Market Movers (macOS Stocks-Style View)
 // ---------------------------------------------------------------------------
 
+// Official AMB NWM Fruits table items (normalized lowercase keys)
+const FRUIT_ITEM_KEYS = new Set([
+  "ananas",
+  "apricot",
+  "avocado",
+  "avocat",
+  "banane",
+  "bilainbi",
+  "bilinbi",
+  "caranbol",
+  "cherry",
+  "citron",
+  "coco",
+  "coeur de boeuf",
+  "corossol",
+  "fig",
+  "fraise",
+  "frisiter",
+  "fruit a pain",
+  "goyave",
+  "grenade",
+  "grenadine curry",
+  "grenadinne",
+  "grenadinne (curry)",
+  "grenadinne (jus)",
+  "jamalac",
+  "ker de bef",
+  "kiwi",
+  "leksi",
+  "letchi",
+  "limon",
+  "longanne",
+  "lucuma",
+  "mandarine",
+  "mandarine (local)",
+  "mangue",
+  "masson",
+  "melon",
+  "melon d'eau",
+  "mirt",
+  "mirtille (blueberry)",
+  "olive",
+  "orange",
+  "orange (loc)",
+  "pamplemousse",
+  "papaye",
+  "patate chinois",
+  "peche",
+  "pitaya",
+  "poire",
+  "pomme",
+  "prune",
+  "raisin",
+  "roselle",
+  "rozelle",
+  "tamarin",
+  "tamarine",
+  "zacques",
+  "zanblon",
+  "zatte",
+]);
+
+function getItemCategory(itemName) {
+  return FRUIT_ITEM_KEYS.has(normalizeSearchKey(itemName)) ? "fruit" : "vegetable";
+}
+
 function switchAppTab(tabKey, focusTab = false) {
   state.activeAppTab = tabKey === "movers" ? "movers" : "dashboard";
   const tabDashboard = document.getElementById("tab-dashboard");
@@ -3374,6 +3441,7 @@ function computeMarketMovers() {
 
       movers.push({
         item: itemName,
+        category: getItemCategory(itemName),
         unit,
         pLabel,
         qLabel: unit || "Units",
@@ -3407,6 +3475,7 @@ function computeMarketMovers() {
 
       movers.push({
         item: itemName,
+        category: getItemCategory(itemName),
         unit,
         pLabel,
         qLabel: unit || "Units",
@@ -3449,17 +3518,35 @@ function renderMarketMovers() {
   }
 
   const allMovers = computeMarketMovers();
-  const gainers = allMovers.filter((m) => m.direction === "up").sort((a, b) => b.pct - a.pct);
-  const losers = allMovers.filter((m) => m.direction === "down").sort((a, b) => a.pct - b.pct);
-  const unchanged = allMovers.filter((m) => m.direction === "flat");
+  const vegTotal = allMovers.filter((m) => m.category === "vegetable").length;
+  const fruitTotal = allMovers.filter((m) => m.category === "fruit").length;
+
+  const catAllBtn = document.getElementById("movers-cat-all");
+  const catVegBtn = document.getElementById("movers-cat-veg");
+  const catFruitBtn = document.getElementById("movers-cat-fruit");
+  if (catAllBtn) catAllBtn.textContent = `Both Separated (${allMovers.length})`;
+  if (catVegBtn) catVegBtn.textContent = `Vegetables (${vegTotal})`;
+  if (catFruitBtn) catFruitBtn.textContent = `Fruits (${fruitTotal})`;
+
+  // Scope movers by active category filter for Top 3 Gainers/Losers and direction counts
+  const categoryScoped =
+    state.moversCategory === "all"
+      ? allMovers
+      : allMovers.filter((m) => m.category === state.moversCategory);
+
+  const gainers = categoryScoped.filter((m) => m.direction === "up").sort((a, b) => b.pct - a.pct);
+  const losers = categoryScoped.filter((m) => m.direction === "down").sort((a, b) => a.pct - b.pct);
+  const unchanged = categoryScoped.filter((m) => m.direction === "flat");
 
   // Update tab summary badge & filter pill counts
   const tabSummaryEl = document.getElementById("movers-tab-summary");
   if (tabSummaryEl) {
-    tabSummaryEl.textContent = `▲ ${gainers.length} · ▼ ${losers.length}`;
+    const allUp = allMovers.filter((m) => m.direction === "up").length;
+    const allDown = allMovers.filter((m) => m.direction === "down").length;
+    tabSummaryEl.textContent = `▲ ${allUp} · ▼ ${allDown}`;
   }
 
-  document.getElementById("movers-filter-all").textContent = `All (${allMovers.length})`;
+  document.getElementById("movers-filter-all").textContent = `All (${categoryScoped.length})`;
   document.getElementById("movers-filter-gainers").textContent = `Gainers ▲ (${gainers.length})`;
   document.getElementById("movers-filter-losers").textContent = `Losers ▼ (${losers.length})`;
   document.getElementById("movers-filter-unchanged").textContent = `Unchanged (${unchanged.length})`;
@@ -3468,6 +3555,12 @@ function renderMarketMovers() {
   const topStrip = document.getElementById("top-movers-strip");
   const top3Up = gainers.slice(0, 3);
   const top3Down = losers.slice(0, 3);
+  const catScopeTitle =
+    state.moversCategory === "vegetable"
+      ? "Vegetables · "
+      : state.moversCategory === "fruit"
+        ? "Fruits · "
+        : "";
 
   const renderTopMiniCard = (m) => `
     <button type="button" class="top-mover-mini" data-mover-item="${escapeHtml(m.item)}" title="Inspect ${escapeHtml(m.item)} in Dashboard">
@@ -3480,7 +3573,7 @@ function renderMarketMovers() {
   topStrip.innerHTML = `
     <div class="top-movers-group top-movers-group--gainers">
       <div class="top-movers-group-title">
-        <span>Top 3 Gainers (▲ ${state.moversTimeframe})</span>
+        <span>${catScopeTitle}Top 3 Gainers (▲ ${state.moversTimeframe})</span>
         <span>${gainers.length} up</span>
       </div>
       <div class="top-movers-cards">
@@ -3489,7 +3582,7 @@ function renderMarketMovers() {
     </div>
     <div class="top-movers-group top-movers-group--losers">
       <div class="top-movers-group-title">
-        <span>Top 3 Losers (▼ ${state.moversTimeframe})</span>
+        <span>${catScopeTitle}Top 3 Losers (▼ ${state.moversTimeframe})</span>
         <span>${losers.length} down</span>
       </div>
       <div class="top-movers-cards">
@@ -3510,7 +3603,7 @@ function renderMarketMovers() {
 
   // Filter & sort watchlist
   const q = normalizeSearchKey(state.moversSearch);
-  let filtered = allMovers.filter((m) => {
+  let filtered = categoryScoped.filter((m) => {
     if (state.moversFilter === "gainers" && m.direction !== "up") return false;
     if (state.moversFilter === "losers" && m.direction !== "down") return false;
     if (state.moversFilter === "unchanged" && m.direction !== "flat") return false;
@@ -3534,36 +3627,60 @@ function renderMarketMovers() {
     return;
   }
 
-  listEl.innerHTML = filtered
-    .map((m, idx) => {
-      const qtyNote =
-        m.latestQty !== null && m.latestQty !== undefined
-          ? ` · Qty: ${formatQty(m.latestQty)} ${m.qLabel}`
-          : "";
-      return `
-        <div class="mover-row" role="listitem" tabindex="0" data-mover-item="${escapeHtml(m.item)}" title="Click to inspect ${escapeHtml(m.item)} in Dashboard">
-          <div class="mover-info">
-            <div class="mover-name-line">
-              <span class="mover-name">${escapeHtml(m.item)}</span>
-              <span class="mover-unit-chip">${escapeHtml(m.pLabel)}</span>
-            </div>
-            <div class="mover-meta">Latest: ${escapeHtml(m.latestDate)} · ${escapeHtml(m.baselineLabel)}${escapeHtml(qtyNote)}</div>
+  let sparkCounter = 0;
+  const renderMoverRow = (m) => {
+    sparkCounter += 1;
+    const qtyNote =
+      m.latestQty !== null && m.latestQty !== undefined
+        ? ` · Qty: ${formatQty(m.latestQty)} ${m.qLabel}`
+        : "";
+    return `
+      <div class="mover-row" role="listitem" tabindex="0" data-mover-item="${escapeHtml(m.item)}" title="Click to inspect ${escapeHtml(m.item)} in Dashboard">
+        <div class="mover-info">
+          <div class="mover-name-line">
+            <span class="mover-name">${escapeHtml(m.item)}</span>
+            <span class="mover-unit-chip">${escapeHtml(m.pLabel)}</span>
           </div>
-          <div class="mover-sparkline-wrap">
-            ${buildSparklineSvg(m.sparkPoints, m.direction, idx)}
+          <div class="mover-meta">Latest: ${escapeHtml(m.latestDate)} · ${escapeHtml(m.baselineLabel)}${escapeHtml(qtyNote)}</div>
+        </div>
+        <div class="mover-sparkline-wrap">
+          ${buildSparklineSvg(m.sparkPoints, m.direction, sparkCounter)}
+        </div>
+        <div class="mover-quote">
+          <div class="mover-price-block">
+            <div class="mover-price-val">Rs ${formatPrice(m.latestPrice)}</div>
+            <div class="mover-price-unit">${escapeHtml(m.pLabel)}</div>
           </div>
-          <div class="mover-quote">
-            <div class="mover-price-block">
-              <div class="mover-price-val">Rs ${formatPrice(m.latestPrice)}</div>
-              <div class="mover-price-unit">${escapeHtml(m.pLabel)}</div>
-            </div>
-            <button type="button" class="mover-pill mover-pill--${m.direction}" title="Click to toggle % change vs Rs change">
-              ${escapeHtml(formatMoverBadgeText(m))}
-            </button>
-          </div>
-        </div>`;
-    })
-    .join("");
+          <button type="button" class="mover-pill mover-pill--${m.direction}" title="Click to toggle % change vs Rs change">
+            ${escapeHtml(formatMoverBadgeText(m))}
+          </button>
+        </div>
+      </div>`;
+  };
+
+  const renderCategoryBlock = (catKey, titleText, itemsList) => {
+    if (!itemsList.length) return "";
+    const upCnt = itemsList.filter((m) => m.direction === "up").length;
+    const downCnt = itemsList.filter((m) => m.direction === "down").length;
+    const flatCnt = itemsList.filter((m) => m.direction === "flat").length;
+    return `
+      <div class="movers-category-block movers-category-block--${catKey}">
+        <div class="movers-category-header">
+          <span class="movers-category-title">${escapeHtml(titleText)} (${itemsList.length})</span>
+          <span class="movers-category-stats">▲ ${upCnt} up · ▼ ${downCnt} down · → ${flatCnt} unchanged</span>
+        </div>
+        <div class="movers-category-list" role="list">
+          ${itemsList.map(renderMoverRow).join("")}
+        </div>
+      </div>`;
+  };
+
+  const vegRows = filtered.filter((m) => m.category === "vegetable");
+  const fruitRows = filtered.filter((m) => m.category === "fruit");
+
+  listEl.innerHTML =
+    renderCategoryBlock("vegetable", "Vegetables", vegRows) +
+    renderCategoryBlock("fruit", "Fruits", fruitRows);
 
   listEl.querySelectorAll(".mover-row").forEach((row) => {
     const pillBtn = row.querySelector(".mover-pill");
@@ -4203,7 +4320,17 @@ function bindControls() {
       .catch(() => {});
   }
 
-  // Market Movers timeframe, filter, search, and sort controls
+  // Market Movers category, timeframe, filter, search, and sort controls
+  document.querySelectorAll("[data-movers-cat]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.moversCategory = btn.dataset.moversCat;
+      document.querySelectorAll("[data-movers-cat]").forEach((b) => {
+        b.classList.toggle("is-active", b.dataset.moversCat === state.moversCategory);
+      });
+      renderMarketMovers();
+    });
+  });
+
   document.querySelectorAll("[data-movers-tf]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.moversTimeframe = btn.dataset.moversTf;
