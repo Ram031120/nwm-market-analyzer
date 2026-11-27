@@ -1,5 +1,5 @@
 // Lightweight Service Worker for NWM Market Analyzer PWA (compatible with Netlify & GitHub Pages)
-const SHELL_CACHE = "nwm-shell-v5";
+const SHELL_CACHE = "nwm-shell-v6";
 const DATA_CACHE = "nwm-data-v1";
 
 const SHELL_ASSETS = [

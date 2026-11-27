@@ -71,6 +71,28 @@
   </header>
 
   <main class="dashboard">
+    <!-- Top-Level Tab Navigation (Dashboard vs Market Movers Stock View) -->
+    <div class="app-tabs-bar">
+      <div class="app-tablist" role="tablist" focusgroup="tablist nomemory" aria-label="Application views">
+        <button type="button" role="tab" id="tab-dashboard" class="app-tab" aria-selected="true" tabindex="0" focusgroupstart>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>
+          </svg>
+          <span>Dashboard</span>
+        </button>
+        <button type="button" role="tab" id="tab-movers" class="app-tab" aria-selected="false" tabindex="-1">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+          </svg>
+          <span>Market Movers</span>
+          <span class="app-tab-badge" id="movers-tab-summary">Stock View</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB PANEL 1: DASHBOARD -->
+    <div id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
+      <div class="tabpanel-stack">
     <!-- Control Deck -->
     <section class="control-deck" aria-label="Market filters">
       <!-- Row 1: Commodity Selector & Quick Pins -->
@@ -635,6 +657,66 @@
         </div>
       </div>
     </section>
+      </div>
+    </div>
+
+    <!-- TAB PANEL 2: MARKET MOVERS (macOS Stocks-Style View) -->
+    <div id="panel-movers" role="tabpanel" aria-labelledby="tab-movers" hidden>
+      <div class="tabpanel-stack">
+        <section class="card movers-card" aria-labelledby="movers-heading">
+          <div class="section-header section-header--wrap">
+            <div>
+              <div class="movers-title-row">
+                <h2 id="movers-heading">NWM Market Movers</h2>
+                <span class="item-unit-badge" id="movers-asof-badge">As of --/--/--</span>
+              </div>
+              <p class="section-subtitle" id="movers-subtitle">
+                Stock-style price watch across all NWM vegetables &amp; fruits. Click any badge to toggle % vs Rs change, or click a row to open full Dashboard charts.
+              </p>
+            </div>
+
+            <div class="movers-timeframe-group" role="group" aria-label="Market movers timeframe">
+              <button type="button" class="preset-btn is-active" data-movers-tf="1D">1D</button>
+              <button type="button" class="preset-btn" data-movers-tf="14D">14D</button>
+              <button type="button" class="preset-btn" data-movers-tf="30D">30D</button>
+              <button type="button" class="preset-btn" data-movers-tf="90D">90D</button>
+            </div>
+          </div>
+
+          <!-- Top 3 Gainers & Top 3 Losers Strip -->
+          <div class="top-movers-strip" id="top-movers-strip"></div>
+
+          <!-- Filter & Sort Toolbar -->
+          <div class="movers-toolbar">
+            <div class="movers-filter-pills" role="group" aria-label="Filter movers by direction">
+              <button type="button" class="pin-btn is-active" data-movers-filter="all" id="movers-filter-all">All</button>
+              <button type="button" class="pin-btn" data-movers-filter="gainers" id="movers-filter-gainers">Gainers (▲)</button>
+              <button type="button" class="pin-btn" data-movers-filter="losers" id="movers-filter-losers">Losers (▼)</button>
+              <button type="button" class="pin-btn" data-movers-filter="unchanged" id="movers-filter-unchanged">Unchanged</button>
+            </div>
+
+            <div class="movers-search-sort">
+              <input
+                type="search"
+                id="movers-search-input"
+                class="d2d-search-input"
+                placeholder="Search commodity..."
+                aria-label="Search commodity in Market Movers"
+              >
+              <select id="movers-sort-select" class="d2d-sort-select" aria-label="Sort Market Movers">
+                <option value="gain-desc">Sort: Biggest % Gain</option>
+                <option value="drop-asc">Sort: Biggest % Drop</option>
+                <option value="price-desc">Sort: Highest Price</option>
+                <option value="alpha">Sort: A – Z</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- macOS Stocks-Style Watchlist -->
+          <div class="movers-watchlist" id="movers-watchlist" role="list"></div>
+        </section>
+      </div>
+    </div>
   </main>
 
   <footer class="site-footer">

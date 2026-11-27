@@ -60,6 +60,12 @@ const state = {
   tomatoVolMode: "kg", // "kg" | "pct"
   monthlyMetric: "price", // "price" | "qty"
   monthlyMatchMonths: true,
+  activeAppTab: "dashboard", // "dashboard" | "movers"
+  moversTimeframe: "1D", // "1D" | "14D" | "30D" | "90D"
+  moversFilter: "all", // "all" | "gainers" | "losers" | "unchanged"
+  moversSearch: "",
+  moversSort: "gain-desc", // "gain-desc" | "drop-asc" | "price-desc" | "alpha"
+  moversBadgeMode: "pct", // "pct" | "abs"
   charts: {
     dailyPrice: null,
     dailyVolume: null,
@@ -3244,6 +3250,349 @@ function renderDateToDateComparison() {
 }
 
 // ---------------------------------------------------------------------------
+// Top-Level Tabs & Market Movers (macOS Stocks-Style View)
+// ---------------------------------------------------------------------------
+
+function switchAppTab(tabKey, focusTab = false) {
+  state.activeAppTab = tabKey === "movers" ? "movers" : "dashboard";
+  const tabDashboard = document.getElementById("tab-dashboard");
+  const tabMovers = document.getElementById("tab-movers");
+  const panelDashboard = document.getElementById("panel-dashboard");
+  const panelMovers = document.getElementById("panel-movers");
+  if (!tabDashboard || !tabMovers || !panelDashboard || !panelMovers) return;
+
+  const isMovers = state.activeAppTab === "movers";
+  const tabs = [
+    { el: tabDashboard, active: !isMovers },
+    { el: tabMovers, active: isMovers },
+  ];
+
+  for (const { el, active } of tabs) {
+    el.setAttribute("aria-selected", active ? "true" : "false");
+    el.tabIndex = active ? 0 : -1;
+    el.toggleAttribute("focusgroupstart", active);
+    if (active) {
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (focusTab) el.focus();
+    }
+  }
+
+  panelDashboard.hidden = isMovers;
+  panelMovers.hidden = !isMovers;
+
+  if (isMovers) {
+    renderMarketMovers();
+  } else {
+    renderAllViews();
+  }
+}
+
+function buildSparklineSvg(values, dirClass, uid) {
+  const width = 136;
+  const height = 36;
+  const padX = 4;
+  const padY = 5;
+
+  const strokeColor =
+    dirClass === "up" ? "#059669" : dirClass === "down" ? "#dc2626" : "#64748b";
+  const fillStart =
+    dirClass === "up"
+      ? "rgba(5, 150, 105, 0.24)"
+      : dirClass === "down"
+        ? "rgba(220, 38, 38, 0.22)"
+        : "rgba(100, 116, 139, 0.16)";
+
+  if (!values || values.length < 2) {
+    const midY = (height / 2).toFixed(1);
+    return `
+      <svg class="mover-sparkline-svg" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+        <line x1="${padX}" y1="${midY}" x2="${width - padX}" y2="${midY}" stroke="${strokeColor}" stroke-width="2" stroke-dasharray="3 3"/>
+      </svg>`;
+  }
+
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values);
+  const span = maxVal - minVal;
+  const innerW = width - padX * 2;
+  const innerH = height - padY * 2;
+
+  const coords = values.map((v, idx) => {
+    const x = padX + (idx / (values.length - 1)) * innerW;
+    const normY = span > 1e-6 ? (v - minVal) / span : 0.5;
+    const y = padY + innerH - normY * innerH;
+    return [Number(x.toFixed(1)), Number(y.toFixed(1))];
+  });
+
+  const pointsAttr = coords.map(([x, y]) => `${x},${y}`).join(" ");
+  const [firstX] = coords[0];
+  const [lastX, lastY] = coords[coords.length - 1];
+  const areaPoints = `${firstX},${height - 2} ${pointsAttr} ${lastX},${height - 2}`;
+
+  return `
+    <svg class="mover-sparkline-svg" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+      <defs>
+        <linearGradient id="spark-grad-${uid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${fillStart}"/>
+          <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+        </linearGradient>
+      </defs>
+      <polygon points="${areaPoints}" fill="url(#spark-grad-${uid})"/>
+      <polyline points="${pointsAttr}" fill="none" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastX}" cy="${lastY}" r="3" fill="${strokeColor}"/>
+    </svg>`;
+}
+
+function computeMarketMovers() {
+  if (!state.rawData) return [];
+  const maxIso = state.rawData.date_range?.max_iso;
+  if (!maxIso) return [];
+
+  const tf = state.moversTimeframe;
+  const daysMap = { "14D": 13, "30D": 29, "90D": 89 };
+  const cutoffIso = tf !== "1D" ? subtractDaysIso(maxIso, daysMap[tf] || 13) : null;
+
+  const items = state.rawData.items || [];
+  const movers = [];
+
+  for (const itemName of items) {
+    const allRecs = state.recordsByItem.get(itemName) || [];
+    const priceRecs = allRecs.filter((r) => r.norm_price !== null && r.norm_price !== undefined);
+    if (priceRecs.length < 2) continue;
+
+    if (tf === "1D") {
+      const latestRec = priceRecs[priceRecs.length - 1];
+      const prevRec = priceRecs[priceRecs.length - 2];
+      const unit = latestRec.unit || state.itemLatestUnit.get(itemName) || "";
+      const pLabel = getPriceUnitLabel(unit);
+      const latestPrice = convertPrice(latestRec.norm_price, latestRec.unit);
+      const baselinePrice = convertPrice(prevRec.norm_price, prevRec.unit);
+      if (latestPrice === null || baselinePrice === null || baselinePrice <= 0) continue;
+
+      const diff = latestPrice - baselinePrice;
+      const pct = (diff / baselinePrice) * 100;
+      const sparkSlice = priceRecs.slice(-10).map((r) => convertPrice(r.norm_price, r.unit)).filter((v) => v !== null);
+
+      movers.push({
+        item: itemName,
+        unit,
+        pLabel,
+        qLabel: unit || "Units",
+        latestPrice,
+        latestDate: formatIsoDDMMYY(latestRec.date_iso),
+        latestIso: latestRec.date_iso,
+        latestQty: latestRec.qty_sold,
+        baselinePrice,
+        baselineLabel: `Prev (${formatIsoDDMMYY(prevRec.date_iso)}): Rs ${formatPrice(baselinePrice)}`,
+        diff,
+        pct,
+        direction: Math.abs(diff) < 1e-6 ? "flat" : diff > 0 ? "up" : "down",
+        sparkPoints: sparkSlice,
+      });
+    } else {
+      const windowRecs = priceRecs.filter((r) => r.date_iso >= cutoffIso && r.date_iso <= maxIso);
+      if (windowRecs.length < 2) continue;
+
+      const latestRec = windowRecs[windowRecs.length - 1];
+      const unit = latestRec.unit || state.itemLatestUnit.get(itemName) || "";
+      const pLabel = getPriceUnitLabel(unit);
+      const convertedVals = windowRecs.map((r) => convertPrice(r.norm_price, r.unit)).filter((v) => v !== null);
+      if (convertedVals.length < 2) continue;
+
+      const latestPrice = convertedVals[convertedVals.length - 1];
+      const avgPrice = convertedVals.reduce((a, b) => a + b, 0) / convertedVals.length;
+      if (avgPrice <= 0) continue;
+
+      const diff = latestPrice - avgPrice;
+      const pct = (diff / avgPrice) * 100;
+
+      movers.push({
+        item: itemName,
+        unit,
+        pLabel,
+        qLabel: unit || "Units",
+        latestPrice,
+        latestDate: formatIsoDDMMYY(latestRec.date_iso),
+        latestIso: latestRec.date_iso,
+        latestQty: latestRec.qty_sold,
+        baselinePrice: avgPrice,
+        baselineLabel: `${tf} Avg (${convertedVals.length}d): Rs ${formatPrice(avgPrice)}`,
+        diff,
+        pct,
+        direction: Math.abs(pct) < 0.05 ? "flat" : diff > 0 ? "up" : "down",
+        sparkPoints: convertedVals,
+      });
+    }
+  }
+
+  return movers;
+}
+
+function formatMoverBadgeText(m) {
+  const arrow = m.direction === "up" ? "▲" : m.direction === "down" ? "▼" : "→";
+  if (state.moversBadgeMode === "abs") {
+    if (m.direction === "flat") return `${arrow} Rs 0.00`;
+    const sign = m.diff > 0 ? "+" : "-";
+    return `${arrow} ${sign}Rs ${formatPrice(Math.abs(m.diff))}`;
+  }
+  if (m.direction === "flat") return `${arrow} 0.0%`;
+  return `${arrow} ${formatSignedPct(m.pct)}`;
+}
+
+function renderMarketMovers() {
+  if (!state.rawData) return;
+
+  const maxIso = state.rawData.date_range?.max_iso || "";
+  const maxDisp = formatIsoDDMMYY(maxIso);
+  const asofEl = document.getElementById("movers-asof-badge");
+  if (asofEl) {
+    asofEl.textContent = `Latest Bulletin: ${maxDisp} · Showing ${state.priceUnit === "lb" ? "Rs/lb" : "Rs/kg"}`;
+  }
+
+  const allMovers = computeMarketMovers();
+  const gainers = allMovers.filter((m) => m.direction === "up").sort((a, b) => b.pct - a.pct);
+  const losers = allMovers.filter((m) => m.direction === "down").sort((a, b) => a.pct - b.pct);
+  const unchanged = allMovers.filter((m) => m.direction === "flat");
+
+  // Update tab summary badge & filter pill counts
+  const tabSummaryEl = document.getElementById("movers-tab-summary");
+  if (tabSummaryEl) {
+    tabSummaryEl.textContent = `▲ ${gainers.length} · ▼ ${losers.length}`;
+  }
+
+  document.getElementById("movers-filter-all").textContent = `All (${allMovers.length})`;
+  document.getElementById("movers-filter-gainers").textContent = `Gainers ▲ (${gainers.length})`;
+  document.getElementById("movers-filter-losers").textContent = `Losers ▼ (${losers.length})`;
+  document.getElementById("movers-filter-unchanged").textContent = `Unchanged (${unchanged.length})`;
+
+  // Render Top 3 Gainers & Top 3 Losers Strip
+  const topStrip = document.getElementById("top-movers-strip");
+  const top3Up = gainers.slice(0, 3);
+  const top3Down = losers.slice(0, 3);
+
+  const renderTopMiniCard = (m) => `
+    <button type="button" class="top-mover-mini" data-mover-item="${escapeHtml(m.item)}" title="Inspect ${escapeHtml(m.item)} in Dashboard">
+      <div class="top-mover-mini-name">${escapeHtml(m.item)}</div>
+      <div class="top-mover-mini-price">Rs ${formatPrice(m.latestPrice)} <span class="mover-price-unit">${escapeHtml(m.pLabel)}</span></div>
+      <div class="top-mover-mini-sub">${escapeHtml(m.baselineLabel)}</div>
+      <span class="mover-pill mover-pill--${m.direction}">${escapeHtml(formatMoverBadgeText(m))}</span>
+    </button>`;
+
+  topStrip.innerHTML = `
+    <div class="top-movers-group top-movers-group--gainers">
+      <div class="top-movers-group-title">
+        <span>Top 3 Gainers (▲ ${state.moversTimeframe})</span>
+        <span>${gainers.length} up</span>
+      </div>
+      <div class="top-movers-cards">
+        ${top3Up.length ? top3Up.map(renderTopMiniCard).join("") : '<div class="mover-meta">No gainers in this timeframe.</div>'}
+      </div>
+    </div>
+    <div class="top-movers-group top-movers-group--losers">
+      <div class="top-movers-group-title">
+        <span>Top 3 Losers (▼ ${state.moversTimeframe})</span>
+        <span>${losers.length} down</span>
+      </div>
+      <div class="top-movers-cards">
+        ${top3Down.length ? top3Down.map(renderTopMiniCard).join("") : '<div class="mover-meta">No losers in this timeframe.</div>'}
+      </div>
+    </div>`;
+
+  topStrip.querySelectorAll(".top-mover-mini").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const item = btn.dataset.moverItem;
+      if (item) {
+        selectPrimaryItem(item);
+        switchAppTab("dashboard");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  });
+
+  // Filter & sort watchlist
+  const q = normalizeSearchKey(state.moversSearch);
+  let filtered = allMovers.filter((m) => {
+    if (state.moversFilter === "gainers" && m.direction !== "up") return false;
+    if (state.moversFilter === "losers" && m.direction !== "down") return false;
+    if (state.moversFilter === "unchanged" && m.direction !== "flat") return false;
+    if (q && !normalizeSearchKey(m.item).includes(q)) return false;
+    return true;
+  });
+
+  if (state.moversSort === "gain-desc") {
+    filtered.sort((a, b) => b.pct - a.pct || a.item.localeCompare(b.item));
+  } else if (state.moversSort === "drop-asc") {
+    filtered.sort((a, b) => a.pct - b.pct || a.item.localeCompare(b.item));
+  } else if (state.moversSort === "price-desc") {
+    filtered.sort((a, b) => b.latestPrice - a.latestPrice || a.item.localeCompare(b.item));
+  } else {
+    filtered.sort((a, b) => a.item.localeCompare(b.item));
+  }
+
+  const listEl = document.getElementById("movers-watchlist");
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="empty-state">No NWM commodities match your current Market Movers filter.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered
+    .map((m, idx) => {
+      const qtyNote =
+        m.latestQty !== null && m.latestQty !== undefined
+          ? ` · Qty: ${formatQty(m.latestQty)} ${m.qLabel}`
+          : "";
+      return `
+        <div class="mover-row" role="listitem" tabindex="0" data-mover-item="${escapeHtml(m.item)}" title="Click to inspect ${escapeHtml(m.item)} in Dashboard">
+          <div class="mover-info">
+            <div class="mover-name-line">
+              <span class="mover-name">${escapeHtml(m.item)}</span>
+              <span class="mover-unit-chip">${escapeHtml(m.pLabel)}</span>
+            </div>
+            <div class="mover-meta">Latest: ${escapeHtml(m.latestDate)} · ${escapeHtml(m.baselineLabel)}${escapeHtml(qtyNote)}</div>
+          </div>
+          <div class="mover-sparkline-wrap">
+            ${buildSparklineSvg(m.sparkPoints, m.direction, idx)}
+          </div>
+          <div class="mover-quote">
+            <div class="mover-price-block">
+              <div class="mover-price-val">Rs ${formatPrice(m.latestPrice)}</div>
+              <div class="mover-price-unit">${escapeHtml(m.pLabel)}</div>
+            </div>
+            <button type="button" class="mover-pill mover-pill--${m.direction}" title="Click to toggle % change vs Rs change">
+              ${escapeHtml(formatMoverBadgeText(m))}
+            </button>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  listEl.querySelectorAll(".mover-row").forEach((row) => {
+    const pillBtn = row.querySelector(".mover-pill");
+    pillBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.moversBadgeMode = state.moversBadgeMode === "pct" ? "abs" : "pct";
+      renderMarketMovers();
+    });
+
+    const activateRow = () => {
+      const item = row.dataset.moverItem;
+      if (item) {
+        selectPrimaryItem(item);
+        switchAppTab("dashboard");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    };
+
+    row.addEventListener("click", activateRow);
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        activateRow();
+      }
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Orchestration & Quick Pins
 // ---------------------------------------------------------------------------
 
@@ -3276,6 +3625,7 @@ function renderAllViews() {
   renderDateToDateComparison();
   renderMonthlyComparison();
   renderSideBySideComparison();
+  renderMarketMovers();
 }
 
 // ---------------------------------------------------------------------------
@@ -3823,6 +4173,65 @@ function bindControls() {
   document.getElementById("d2d-both-only").addEventListener("change", (e) => {
     state.d2dBothOnly = e.target.checked;
     renderDateToDateComparison();
+  });
+
+  // Top-level tab navigation (Dashboard vs Market Movers)
+  const tabDashboard = document.getElementById("tab-dashboard");
+  const tabMovers = document.getElementById("tab-movers");
+  tabDashboard?.addEventListener("click", () => switchAppTab("dashboard"));
+  tabMovers?.addEventListener("click", () => switchAppTab("movers"));
+
+  document.querySelector(".app-tablist")?.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      const next =
+        e.key === "Home"
+          ? "dashboard"
+          : e.key === "End"
+            ? "movers"
+            : state.activeAppTab === "dashboard"
+              ? "movers"
+              : "dashboard";
+      switchAppTab(next, true);
+    }
+  });
+
+  // Conditionally load focusgroup polyfill if not natively supported
+  if (!Object.hasOwn(HTMLElement.prototype, "focusGroup")) {
+    import("https://esm.sh/@microsoft/focusgroup-polyfill")
+      .then((mod) => mod.polyfill?.())
+      .catch(() => {});
+  }
+
+  // Market Movers timeframe, filter, search, and sort controls
+  document.querySelectorAll("[data-movers-tf]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.moversTimeframe = btn.dataset.moversTf;
+      document.querySelectorAll("[data-movers-tf]").forEach((b) => {
+        b.classList.toggle("is-active", b.dataset.moversTf === state.moversTimeframe);
+      });
+      renderMarketMovers();
+    });
+  });
+
+  document.querySelectorAll("[data-movers-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.moversFilter = btn.dataset.moversFilter;
+      document.querySelectorAll("[data-movers-filter]").forEach((b) => {
+        b.classList.toggle("is-active", b.dataset.moversFilter === state.moversFilter);
+      });
+      renderMarketMovers();
+    });
+  });
+
+  document.getElementById("movers-search-input")?.addEventListener("input", (e) => {
+    state.moversSearch = e.target.value;
+    renderMarketMovers();
+  });
+
+  document.getElementById("movers-sort-select")?.addEventListener("change", (e) => {
+    state.moversSort = e.target.value;
+    renderMarketMovers();
   });
 
   // Sync / Refresh button (hybrid local vs Netlify mode)
