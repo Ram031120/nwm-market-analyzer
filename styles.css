@@ -955,9 +955,18 @@ h3 {
   margin-bottom: 8px;
 }
 
+.card,
+.chart-panel,
+.chart-canvas-wrap,
+.tabpanel-stack,
+.dashboard {
+  min-inline-size: 0;
+}
+
 .chart-canvas-wrap {
   position: relative;
   width: 100%;
+  overflow: hidden;
 }
 
 .chart-canvas-wrap--price {
@@ -1845,6 +1854,19 @@ h3 {
   color: var(--text-muted);
 }
 
+.top-mover-mini-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.top-mover-mini-spark .mover-sparkline-svg {
+  width: 78px;
+  height: 26px;
+}
+
 .movers-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -2121,16 +2143,26 @@ h3 {
     grid-template-columns: 1fr;
   }
   .mover-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px 12px;
+    grid-template-columns: minmax(0, 1.35fr) 82px auto;
+    gap: 8px 10px;
     padding: 11px 12px;
   }
   .mover-sparkline-wrap {
-    display: none;
+    height: 30px;
+  }
+  .mover-sparkline-svg {
+    width: 80px;
+    height: 28px;
+  }
+  .mover-quote {
+    gap: 8px;
+  }
+  .mover-price-val {
+    font-size: 0.92rem;
   }
   .mover-pill {
-    min-inline-size: 92px;
-    padding: 5px 9px;
-    font-size: 0.77rem;
+    min-inline-size: 82px;
+    padding: 5px 8px;
+    font-size: 0.75rem;
   }
 }

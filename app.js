@@ -86,9 +86,93 @@ const state = {
 // ---------------------------------------------------------------------------
 
 async function ensureTemporal() {
-  if (typeof globalThis.Temporal === "undefined") {
-    const mod = await import("https://esm.sh/temporal-polyfill@0.3.0");
+  if (typeof globalThis.Temporal !== "undefined") return;
+  try {
+    const mod = await import("https://cdn.jsdelivr.net/npm/temporal-polyfill@0.3.0/+esm");
     globalThis.Temporal = mod.Temporal;
+    return;
+  } catch {
+    try {
+      const mod = await import("https://esm.sh/temporal-polyfill@0.3.0");
+      globalThis.Temporal = mod.Temporal;
+      return;
+    } catch {
+      // Minimal built-in Temporal.PlainDate & PlainYearMonth fallback for strict offline/restricted mobile browsers
+      const pad2 = (n) => String(n).padStart(2, "0");
+      class PlainDateFallback {
+        constructor(year, month, day) {
+          const dt = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+          if (
+            dt.getUTCFullYear() !== Number(year) ||
+            dt.getUTCMonth() + 1 !== Number(month) ||
+            dt.getUTCDate() !== Number(day)
+          ) {
+            throw new RangeError("Invalid PlainDate");
+          }
+          this.year = Number(year);
+          this.month = Number(month);
+          this.day = Number(day);
+        }
+        get dayOfWeek() {
+          const d = new Date(Date.UTC(this.year, this.month - 1, this.day)).getUTCDay();
+          return d === 0 ? 7 : d;
+        }
+        static from(val) {
+          if (val instanceof PlainDateFallback) return val;
+          if (typeof val === "string") {
+            const [y, m, d] = val.split("-").map(Number);
+            return new PlainDateFallback(y, m, d);
+          }
+          return new PlainDateFallback(val.year, val.month, val.day);
+        }
+        static compare(a, b) {
+          const pa = PlainDateFallback.from(a).toString();
+          const pb = PlainDateFallback.from(b).toString();
+          return pa < pb ? -1 : pa > pb ? 1 : 0;
+        }
+        add({ years = 0, months = 0, days = 0 }) {
+          const dt = new Date(Date.UTC(this.year + years, this.month - 1 + months, this.day + days));
+          return new PlainDateFallback(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+        }
+        subtract({ years = 0, months = 0, days = 0 }) {
+          return this.add({ years: -years, months: -months, days: -days });
+        }
+        until(other) {
+          const o = PlainDateFallback.from(other);
+          const msA = Date.UTC(this.year, this.month - 1, this.day);
+          const msB = Date.UTC(o.year, o.month - 1, o.day);
+          return { days: Math.round((msB - msA) / 86400000) };
+        }
+        toString() {
+          return `${this.year}-${pad2(this.month)}-${pad2(this.day)}`;
+        }
+      }
+      class PlainYearMonthFallback {
+        constructor(year, month) {
+          const dt = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
+          this.year = dt.getUTCFullYear();
+          this.month = dt.getUTCMonth() + 1;
+        }
+        static from(val) {
+          if (val instanceof PlainYearMonthFallback) return val;
+          if (typeof val === "string") {
+            const [y, m] = val.split("-").map(Number);
+            return new PlainYearMonthFallback(y, m);
+          }
+          return new PlainYearMonthFallback(val.year, val.month);
+        }
+        subtract({ years = 0, months = 0 }) {
+          return new PlainYearMonthFallback(this.year - years, this.month - months);
+        }
+        toString() {
+          return `${this.year}-${pad2(this.month)}`;
+        }
+      }
+      globalThis.Temporal = {
+        PlainDate: PlainDateFallback,
+        PlainYearMonth: PlainYearMonthFallback,
+      };
+    }
   }
 }
 
@@ -3360,6 +3444,11 @@ function switchAppTab(tabKey, focusTab = false) {
     renderMarketMovers();
   } else {
     renderAllViews();
+    requestAnimationFrame(() => {
+      Object.values(state.charts).forEach((ch) => {
+        if (ch && typeof ch.resize === "function") ch.resize();
+      });
+    });
   }
 }
 
@@ -3589,12 +3678,15 @@ function renderMarketMovers() {
         ? "Fruits · "
         : "";
 
-  const renderTopMiniCard = (m) => `
+  const renderTopMiniCard = (m, idx) => `
     <button type="button" class="top-mover-mini" data-mover-item="${escapeHtml(m.item)}" title="Inspect ${escapeHtml(m.item)} in Dashboard">
       <div class="top-mover-mini-name">${escapeHtml(m.item)}</div>
       <div class="top-mover-mini-price">Rs ${formatPrice(m.latestPrice)} <span class="mover-price-unit">${escapeHtml(m.pLabel)}</span></div>
       <div class="top-mover-mini-sub">${escapeHtml(m.baselineLabel)}</div>
-      <span class="mover-pill mover-pill--${m.direction}">${escapeHtml(formatMoverBadgeText(m))}</span>
+      <div class="top-mover-mini-foot">
+        <span class="mover-pill mover-pill--${m.direction}">${escapeHtml(formatMoverBadgeText(m))}</span>
+        <span class="top-mover-mini-spark">${buildSparklineSvg(m.sparkPoints, m.direction, `top-${m.direction}-${idx}`)}</span>
+      </div>
     </button>`;
 
   const tfDisplay = state.moversTimeframe === "ALL" ? "All Data" : state.moversTimeframe;
@@ -3763,6 +3855,10 @@ function selectPrimaryItem(itemName) {
 
 function renderAllViews() {
   if (!state.rawData || !state.selectedItem) return;
+  if (state.activeAppTab === "movers") {
+    renderMarketMovers();
+    return;
+  }
   const records = getItemRecordsInRange(state.selectedItem);
   renderKPIs(records);
   renderDailyCharts(records);
