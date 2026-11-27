@@ -27,6 +27,8 @@ const QUICK_PIN_DEFAULTS = [
   "Poivron (Vert)",
 ];
 
+const LAST_SEEN_DATE_KEY = "nwm_last_seen_max_iso";
+
 const state = {
   rawData: null,
   recordsByItem: new Map(),
@@ -2397,6 +2399,21 @@ function summarizeMonthRecords(recs, fallbackUnit = "") {
   };
 }
 
+function renderPriceTrendCell(td, pDiff, pPct) {
+  if (pDiff === null) {
+    td.textContent = "—";
+    return;
+  }
+  if (Math.abs(pDiff) < 1e-6) {
+    td.textContent = "→ 0%";
+    return;
+  }
+  const cls = pDiff > 0 ? "delta-up" : "delta-down";
+  const arrow = pDiff > 0 ? "▲" : "▼";
+  const sign = pDiff > 0 ? "+" : "-";
+  td.innerHTML = `<span class="${cls}">${arrow} ${sign}${formatPrice(Math.abs(pDiff))} (${formatSignedPct(pPct)})</span>`;
+}
+
 function renderMonthToMonthComparison() {
   if (!state.rawData || !state.d2dMonthA || !state.d2dMonthB) return;
 
@@ -2670,7 +2687,7 @@ function renderMonthToMonthComparison() {
   const tableEl = document.getElementById("d2d-table");
   tableEl.style.setProperty("--label-2", `"${dispAShort} Avg Price"`);
   tableEl.style.setProperty("--label-3", `"${dispBShort} Avg Price"`);
-  tableEl.style.setProperty("--label-4", `"Avg Price Δ"`);
+  tableEl.style.setProperty("--label-4", `"Avg Price Trend"`);
   tableEl.style.setProperty("--label-5", `"${dispAShort} Total Qty"`);
   tableEl.style.setProperty("--label-6", `"${dispBShort} Total Qty"`);
   tableEl.style.setProperty("--label-7", `"Qty Δ"`);
@@ -2759,17 +2776,7 @@ function renderMonthToMonthComparison() {
 
     const tdPd = document.createElement("td");
     tdPd.className = "num";
-    if (r.pDiff !== null) {
-      if (Math.abs(r.pDiff) < 1e-6) {
-        tdPd.textContent = "0%";
-      } else {
-        const cls = r.pDiff > 0 ? "delta-up" : "delta-down";
-        const sign = r.pDiff > 0 ? "+" : "-";
-        tdPd.innerHTML = `<span class="${cls}">${sign}${formatPrice(Math.abs(r.pDiff))} (${formatSignedPct(r.pPct)})</span>`;
-      }
-    } else {
-      tdPd.textContent = "—";
-    }
+    renderPriceTrendCell(tdPd, r.pDiff, r.pPct);
 
     const tdQa = document.createElement("td");
     tdQa.className = "num";
@@ -2783,7 +2790,7 @@ function renderMonthToMonthComparison() {
     tdQd.className = "num";
     if (r.qDiff !== null) {
       if (Math.abs(r.qDiff) < 1e-6) {
-        tdQd.textContent = "0%";
+        tdQd.textContent = "→ 0%";
       } else {
         const cls = r.qPct !== null && r.qPct < -30 ? "delta-drop" : r.qDiff > 0 ? "delta-down" : "delta-up";
         tdQd.innerHTML = `<span class="${cls}">${formatSignedPct(r.qPct)}</span>`;
@@ -3114,7 +3121,7 @@ function renderDateToDateComparison() {
   const tableEl = document.getElementById("d2d-table");
   tableEl.style.setProperty("--label-2", `"${dispA} NORM"`);
   tableEl.style.setProperty("--label-3", `"${dispB} NORM"`);
-  tableEl.style.setProperty("--label-4", `"Price Δ"`);
+  tableEl.style.setProperty("--label-4", `"Price Trend"`);
   tableEl.style.setProperty("--label-5", `"${dispA} Qty"`);
   tableEl.style.setProperty("--label-6", `"${dispB} Qty"`);
   tableEl.style.setProperty("--label-7", `"Qty Δ"`);
@@ -3207,17 +3214,7 @@ function renderDateToDateComparison() {
 
     const tdPd = document.createElement("td");
     tdPd.className = "num";
-    if (r.pDiff !== null) {
-      if (Math.abs(r.pDiff) < 1e-6) {
-        tdPd.textContent = "0%";
-      } else {
-        const cls = r.pDiff > 0 ? "delta-up" : "delta-down";
-        const sign = r.pDiff > 0 ? "+" : "-";
-        tdPd.innerHTML = `<span class="${cls}">${sign}${formatPrice(Math.abs(r.pDiff))} (${formatSignedPct(r.pPct)})</span>`;
-      }
-    } else {
-      tdPd.textContent = "—";
-    }
+    renderPriceTrendCell(tdPd, r.pDiff, r.pPct);
 
     const tdQa = document.createElement("td");
     tdQa.className = "num";
@@ -3231,7 +3228,7 @@ function renderDateToDateComparison() {
     tdQd.className = "num";
     if (r.qDiff !== null) {
       if (Math.abs(r.qDiff) < 1e-6) {
-        tdQd.textContent = "0%";
+        tdQd.textContent = "→ 0%";
       } else {
         const cls = r.qPct !== null && r.qPct < -30 ? "delta-drop" : r.qDiff > 0 ? "delta-down" : "delta-up";
         tdQd.innerHTML = `<span class="${cls}">${formatSignedPct(r.qPct)}</span>`;
@@ -3282,10 +3279,10 @@ function renderAllViews() {
 }
 
 // ---------------------------------------------------------------------------
-// Data Loading & Incremental Sync
+// Data Loading, Live Update Notifications & Incremental Sync
 // ---------------------------------------------------------------------------
 
-function showToast(message, isError = false) {
+function showToast(message, isError = false, durationMs = 7000) {
   const toast = document.getElementById("sync-toast");
   toast.textContent = message;
   toast.classList.toggle("is-error", isError);
@@ -3293,7 +3290,25 @@ function showToast(message, isError = false) {
   clearTimeout(showToast._timer);
   showToast._timer = setTimeout(() => {
     toast.hidden = true;
-  }, 7000);
+  }, durationMs);
+}
+
+async function checkForNewData() {
+  if (!state.rawData || document.visibilityState === "hidden") return;
+  try {
+    const resp = await fetch(`data/nwm_data.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!resp.ok) return;
+    const fresh = await resp.json();
+    const currentMaxIso = state.rawData?.date_range?.max_iso || "";
+    const freshMaxIso = fresh?.date_range?.max_iso || "";
+    if (freshMaxIso && freshMaxIso > currentMaxIso) {
+      await loadDataset(true);
+      const disp = fresh.last_updated || formatIsoDDMMYY(freshMaxIso);
+      showToast(`New NWM bulletin published: ${disp} — Dashboard updated!`, false, 12000);
+    }
+  } catch {
+    // Silent ignore when offline or network transiently unavailable
+  }
 }
 
 async function loadDataset(preserveSelection = false) {
@@ -3309,9 +3324,33 @@ async function loadDataset(preserveSelection = false) {
   // Header metadata strictly in dd/mm/yy
   const minDisp = data.date_range?.min || formatIsoDDMMYY(data.date_range?.min_iso);
   const maxDisp = data.date_range?.max || formatIsoDDMMYY(data.date_range?.max_iso);
+  const currentMaxIso = data.date_range?.max_iso || "";
   document.getElementById("meta-last-updated").textContent = `Last bulletin: ${data.last_updated || maxDisp}`;
   document.getElementById("meta-coverage").textContent =
     `${minDisp} – ${maxDisp} · ${data.total_trading_days} days · ${data.items.length} items`;
+
+  // In-app notification when opening the app if a newer bulletin arrived since last visit
+  if (!preserveSelection && currentMaxIso) {
+    try {
+      const lastSeenIso = localStorage.getItem(LAST_SEEN_DATE_KEY);
+      if (lastSeenIso && currentMaxIso > lastSeenIso) {
+        showToast(
+          `New NWM bulletin available: ${data.last_updated || maxDisp} (${data.items.length} items loaded).`,
+          false,
+          10000
+        );
+      }
+      localStorage.setItem(LAST_SEEN_DATE_KEY, currentMaxIso);
+    } catch {
+      // Ignore storage quota / privacy mode errors
+    }
+  } else if (preserveSelection && currentMaxIso) {
+    try {
+      localStorage.setItem(LAST_SEEN_DATE_KEY, currentMaxIso);
+    } catch {
+      // Ignore
+    }
+  }
 
   // Populate comboboxes dynamically from data.items
   state.comboboxes.primary.setItems(data.items);
@@ -3345,18 +3384,24 @@ async function loadDataset(preserveSelection = false) {
 
   renderYearCheckboxes();
 
-  // Initialize Date-to-Date & Month-to-Month defaults
+  // Initialize Date-to-Date & Month-to-Month defaults (default Date A = Prev Trading Day for instant daily trends)
   if (!preserveSelection || !state.d2dDateA || !state.d2dDateB) {
     const latestIso = data.date_range?.max_iso || "";
     const minIso = data.date_range?.min_iso || "";
     if (latestIso) {
-      const targetYoY = clampIso(subtractYearsIso(latestIso, 1), minIso, latestIso);
+      const { prev } = findAdjacentTradingDates(latestIso);
+      const fallbackYoY = clampIso(subtractYearsIso(latestIso, 1), minIso, latestIso);
       state.d2dDateB = latestIso;
-      state.d2dDateA = findNearestTradingDate(targetYoY) || targetYoY;
+      state.d2dDateA = prev || findNearestTradingDate(fallbackYoY) || fallbackYoY;
       syncD2DInputsUI();
     }
   } else if (state.d2dDateB === prevMaxIso && data.date_range?.max_iso) {
-    state.d2dDateB = data.date_range.max_iso;
+    const latestIso = data.date_range.max_iso;
+    const { prev } = findAdjacentTradingDates(latestIso);
+    state.d2dDateB = latestIso;
+    if (state.d2dDateA === findAdjacentTradingDates(prevMaxIso).prev && prev) {
+      state.d2dDateA = prev;
+    }
     syncD2DInputsUI();
   }
 
@@ -3770,6 +3815,14 @@ function bindControls() {
   const syncLabel = document.getElementById("btn-sync-label");
   if (syncLabel) syncLabel.textContent = getDefaultSyncButtonLabel();
   document.getElementById("btn-sync").addEventListener("click", triggerIncrementalSync);
+
+  // Auto-check for new NWM bulletins when returning to the app or every 10 minutes
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      checkForNewData();
+    }
+  });
+  setInterval(checkForNewData, 10 * 60 * 1000);
 
   // Progressive PWA install button
   bindInstallButton();
